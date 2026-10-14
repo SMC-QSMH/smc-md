@@ -254,6 +254,7 @@ ROUTES.contracts = function () {
       '<div class="spacer"></div>' +
       tag(N(D.doctors.length) + ' ราย', 'plain') + ' ' +
       (D.noContract ? tag('ไม่มีสัญญา ' + N(D.noContract), 'bad') : '') + ' ' +
+      (D.noFile ? tag('ยังไม่แนบไฟล์ ' + N(D.noFile), 'plain') : '') + ' ' +
       (D.contractFlags ? tag('ขึ้นธง ' + N(D.contractFlags), 'warn') : tag('เรียบร้อย', 'ok')) +
       '</div>';
 
