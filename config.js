@@ -13,7 +13,7 @@
  */
 
 var CFG = {
-  API_URL: 'PASTE_WEB_APP_URL_HERE',
+  API_URL: 'https://script.google.com/macros/s/AKfycbzOwaFEOa0qwV3lTbGUgKyKgYxz6lIhLmdN_yke6zgICud75TRpbBy6cMBkQkXUqhnj1A/exec',
 
   /* ต้องตรงกับ APP.BUILD ใน Config.gs — ถ้าไม่ตรงระบบจะเตือนให้ล้างแคช */
   BUILD: '2569-10-14.1',
