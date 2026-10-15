@@ -44,7 +44,7 @@ function renderDoctorMonth(D, ym, isMine, meta) {
   html += card('ยอดรายวัน', '<div class="chart" id="cDocDay"></div>', { icon: 'month', sub: 'แตะแท่งเพื่อดูรายการของวันนั้นในตารางด้านล่าง' });
 
   if (D.groups && D.groups.length > 1) {
-    html += card('ยอดแยกตามหน่วยที่ให้บริการ', note('info', 'ยอดด้านบนเป็นยอดรวมทุกหน่วยแล้ว · การเบิกผ่านฝ่ายบริหารงานบุคคลใช้รหัสรายได้แยกกัน') +
+    html += card('ยอดแยกตามหน่วยที่ให้บริการ', note('info', 'ยอดด้านบนเป็นยอดรวมทุกหน่วยแล้ว · การเบิกผ่านฝ่ายทรัพยากรบุคคลใช้รหัสรายได้แยกกัน') +
       hbars(D.groups.map(function (g) { return { label: g.name, v: g.base, sub: N(g.items) + ' รายการ' }; })), { icon: 'shuffle' });
   }
   html += '<div class="grid g2">' +
@@ -59,7 +59,7 @@ function renderDoctorMonth(D, ym, isMine, meta) {
   html += card('รายการละเอียด', '<div id="docRows"></div>', { icon: 'list', raw: false, flush: true,
     sub: 'ค้นหา HN · กรองตามวัน สิทธิ รหัส สถานะ · ส่งออก Excel ได้' });
   html += '<div class="small muted" style="margin-top:-6px">ยอดคำนวณจากยอดที่โรงพยาบาลเรียกเก็บได้จริง (เงินสด + ยอดที่เรียกเก็บจากต้นสังกัด/บริษัทประกัน) · ' +
-    'หากพบยอดคลาดเคลื่อน กรุณาแจ้งหน่วยงานบริหารเงินเดือน ค่าจ้างและค่าตอบแทน ฝ่ายบริหารงานบุคคล</div>';
+    'หากพบยอดคลาดเคลื่อน กรุณาแจ้งงานบริหารเงินเดือน ค่าจ้าง และค่าตอบแทน ฝ่ายทรัพยากรบุคคล</div>';
   return html;
 }
 
@@ -109,7 +109,7 @@ ROUTES.myPending = function () {
 
 /* ═══════════════ แพทย์ — ประวัติและสัญญา ═══════════════ */
 ROUTES.myProfile = function () {
-  header('ประวัติและสัญญาของฉัน', 'ข้อมูลตามทะเบียนของหน่วยงานบริหารเงินเดือน ค่าจ้างและค่าตอบแทน', '');
+  header('ประวัติและสัญญาของฉัน', 'ข้อมูลตามทะเบียนของงานบริหารเงินเดือน ค่าจ้าง และค่าตอบแทน', '');
   load('myProfile', {}, function (D) {
     var d = D.doctor, c = D.contract;
     function dl(list) { return '<dl class="dl">' + list.map(function (x) { return '<dt>' + esc(x[0]) + '</dt><dd>' + (x[1] === undefined || x[1] === '' ? '—' : x[1]) + '</dd>'; }).join('') + '</dl>'; }
@@ -124,7 +124,7 @@ ROUTES.myProfile = function () {
         ['วันลงนาม', c.signDate ? dTh(c.signDate) : ''], ['วันสิ้นสุด', c.endDate ? dTh(c.endDate) : 'ไม่ระบุ (ต่อเนื่อง)'],
         ['สถานะ', tag(c.status || '—', c.startDate ? 'ok' : 'warn')], ['ไฟล์สัญญา', c.hasFile ? esc(c.fileName || 'มีไฟล์แนบ') : 'ยังไม่มีไฟล์ในระบบ']]) +
         (c.hasFile && D.canDownloadContract ? '<div class="btn-row" style="margin-top:14px"><button class="btn pri" onclick="dlContract(this)">' + I('download', 'sm') + 'ดาวน์โหลดไฟล์สัญญา</button></div>'
-         : (c.hasFile ? '<div class="hint" style="margin-top:10px">การดาวน์โหลดไฟล์สัญญาถูกปิดไว้ กรุณาติดต่อฝ่ายบริหารงานบุคคล</div>' : '')), { icon: 'file' }) + '</div>';
+         : (c.hasFile ? '<div class="hint" style="margin-top:10px">การดาวน์โหลดไฟล์สัญญาถูกปิดไว้ กรุณาติดต่อฝ่ายทรัพยากรบุคคล</div>' : '')), { icon: 'file' }) + '</div>';
     V(html);
   });
 };

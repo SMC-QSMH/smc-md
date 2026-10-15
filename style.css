@@ -497,3 +497,13 @@ tr:hover .copy{opacity:1}
   .kpi{box-shadow:none;animation:none}
   .kpi.hero{background:#fff !important;color:#000;border:1px solid #999}
 }
+
+/* ── รุ่น 15.3: นำเข้า Excel + แถบความคืบหน้าการดึงข้อมูล ── */
+.drop{display:flex;flex-direction:column;align-items:center;gap:6px;padding:34px 16px;border:2px dashed var(--line-2);border-radius:14px;cursor:pointer;text-align:center;transition:.2s}
+.drop:hover,.drop.on{border-color:var(--brand);background:var(--hover)}
+.drop svg{width:34px;height:34px;opacity:.7}
+.syncbar{position:fixed;right:18px;bottom:18px;z-index:90;display:flex;gap:12px;align-items:flex-start;max-width:360px;width:calc(100% - 36px);
+  padding:14px 16px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 32px rgba(0,0,0,.18);animation:pagein .3s ease}
+.syncbar>div{flex:1;min-width:0}
+.pbar{height:6px;border-radius:6px;background:var(--line);margin-top:8px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--brand);transition:width .4s}

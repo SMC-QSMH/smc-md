@@ -8,7 +8,7 @@
    ═══════════════════════════════════════════════════════ */
 ROUTES.close = function (ym) {
   ym = ym || ymAdd(thisYm(), -1);
-  header('ตัดรอบและออกเอกสาร', 'รอบ ' + ymTh(ym) + ' · ส่งฝ่ายบริหารงานบุคคลไม่เกินวันที่ ' + esc((S.me.settings && S.me.settings.submitByDay) || 4) + ' ของเดือนถัดไป',
+  header('ตัดรอบและออกเอกสาร', 'รอบ ' + ymTh(ym) + ' · ส่งฝ่ายทรัพยากรบุคคลไม่เกินวันที่ ' + esc((S.me.settings && S.me.settings.submitByDay) || 4) + ' ของเดือนถัดไป',
     monthPicker('close', ym) + refreshBtn());
   load('getMonth', { ym: ym, grp: 'ALL' }, function (D, meta) {
     var s = D.summary;
@@ -36,7 +36,7 @@ ROUTES.close = function (ym) {
       { t: 'ปิดรอบ (ล็อกยอด)', d: 'บันทึกยอดของแต่ละแพทย์เป็นหลักฐาน ถ้าภายหลังยอดเปลี่ยน ระบบแจ้งเป็นรายการตกเบิกให้เอง', done: allClosed,
         b: allClosed ? tag('ปิดรอบแล้ว', 'ok') + (isAdmin() ? ' <button class="btn sm" onclick="reopenMonth(' + q(ym) + ')">เปิดรอบใหม่</button>' : '')
                      : '<button class="btn pri" onclick="closeMonth(' + q(ym) + ')"' + (D.waitGroup ? ' disabled' : '') + '>' + I('lock', 'sm') + 'ปิดรอบ ' + ymShort(ym) + '</button>' },
-      { t: 'ออกรายงานขอเบิกส่งฝ่ายบริหารงานบุคคล', d: 'Google Sheet พร้อมหัวรายงาน ยอดรวม และช่องลงนาม สั่งพิมพ์เป็น PDF ได้ทันที',
+      { t: 'ออกรายงานขอเบิกส่งฝ่ายทรัพยากรบุคคล', d: 'Google Sheet พร้อมหัวรายงาน ยอดรวม และช่องลงนาม สั่งพิมพ์เป็น PDF ได้ทันที',
         b: '<button class="btn" onclick="mkDoc(\'buildHrReport\',{ym:' + q(ym) + ',grp:\'ALL\'},this)">' + I('file', 'sm') + 'ออกรายงานขอเบิก</button>' },
       { t: 'ออกไฟล์นำเข้า HRMi', d: 'ไฟล์ 7 คอลัมน์ · แยกรหัสรายได้ R101 (โรงพยาบาล) และ R106 (ศูนย์สาขา) · มีทั้ง Google Sheet และ CSV',
         b: '<button class="btn" onclick="mkDoc(\'buildHrmiFiles\',{ym:' + q(ym) + ',grp:\'ALL\'},this)">' + I('download', 'sm') + 'ออกไฟล์ HRMi</button>' },
@@ -54,15 +54,165 @@ ROUTES.close = function (ym) {
 
 function syncMonth(ym) {
   var last = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0)).toISOString().slice(0, 10);
+  if (last > today()) last = today();
   UI.confirm({ title: 'ดึงข้อมูลทั้งเดือน ' + ymTh(ym) + '?', icon: 'refresh', tone: '',
-    body: '<p>ดึงรายการจากระบบโรงพยาบาลใหม่ทั้งเดือน อาจใช้เวลา 1–3 นาที</p><p class="muted small" style="margin:0">การตัดสินใจที่เจ้าหน้าที่บันทึกไว้จะยังอยู่ครบ · ระบบจะเทียบรายการที่หาย/ยอดเปลี่ยนให้ในหน้าตรวจรายวัน</p>', ok: 'ดึงข้อมูล' })
+    body: '<p>ดึงรายการจากระบบโรงพยาบาลใหม่ทั้งเดือน ทีละ 2 วัน (ประมาณ 2–6 นาที) · ระหว่างนี้อย่าปิดหน้านี้</p><p class="muted small" style="margin:0">การตัดสินใจที่เจ้าหน้าที่บันทึกไว้จะยังอยู่ครบ · ระบบจะเทียบรายการที่หาย/ยอดเปลี่ยนให้ในหน้าตรวจรายวัน</p>', ok: 'ดึงข้อมูล' })
     .then(function (y) {
       if (!y) return;
-      toast('กำลังดึงข้อมูล กรุณารอ อย่าปิดหน้านี้', 'info', 15000);
-      api('syncRange', { from: ym + '-01', to: last }, { write: true })
-        .then(function (r) { toast('ดึงข้อมูลเรียบร้อย ' + N(r.rows) + ' รายการ ' + N(r.days) + ' วัน', 'ok', 8000); go(S.page, ym); })
-        .catch(function (e) { toast(e.message, 'bad', 12000); });
+      /* รุ่น 15.3 — แบ่งเป็นช่วงละ 2 วัน กันหลังบ้านเกินเวลา 6 นาที แล้วสรุปเดือนครั้งเดียวตอนจบ */
+      var chunks = [], d = ym + '-01';
+      while (d <= last) { var e = shiftDay(d, 1); if (e > last) e = last; chunks.push([d, e]); d = shiftDay(e, 1); }
+      var i = 0, rows = 0, errs = [];
+      var bar = document.createElement('div'); bar.className = 'syncbar';
+      document.body.appendChild(bar);
+      function show(msg) { bar.innerHTML = '<span class="spin"></span><div><b>ดึงข้อมูล ' + ymTh(ym) + '</b><div class="small">' + msg + '</div>' +
+        '<div class="pbar"><i style="width:' + Math.round(i / chunks.length * 100) + '%"></i></div></div>'; }
+      function next() {
+        if (i >= chunks.length) {
+          show('กำลังสรุปยอดทั้งเดือน…');
+          return api('rebuildMonth', { ym: ym }, { write: true }).then(function () {
+            bar.remove();
+            if (errs.length) UI.alert({ title: 'ดึงข้อมูลเสร็จ แต่มีบางช่วงไม่สำเร็จ', tone: 'warn', icon: 'alert', body: note('warn', errs.map(esc).join('<br>') + '<br>กดดึงข้อมูลอีกครั้งเพื่อลองช่วงที่ขาด') });
+            else toast('ดึงข้อมูลเรียบร้อย ' + N(rows) + ' รายการ', 'ok', 8000);
+            go(S.page, ym);
+          }).catch(function (e) { bar.remove(); toast(e.message, 'bad', 12000); });
+        }
+        var c = chunks[i];
+        show('ช่วง ' + (i + 1) + '/' + chunks.length + ' · ' + dTh(c[0]) + ' – ' + dTh(c[1]) + ' · ได้แล้ว ' + N(rows) + ' รายการ');
+        return api('syncRange', { from: c[0], to: c[1], noMonth: true }, { write: true })
+          .then(function (r) { rows += r.rows || 0; }, function (e) { errs.push(c[0] + ' – ' + c[1] + ': ' + e.message); })
+          .then(function () { i++; return next(); });
+      }
+      show('เริ่ม…'); next();
     });
+}
+
+/* ═══════════════ นำเข้าผลเบิกจาก Excel (รุ่น 15.3) ═══════════════ */
+var IMP_COLS = {
+  dct: ['รหัสประจำตัว', 'รหัสแพทย์', 'รหัสพนักงาน', 'DCT'], name: ['แพทย์', 'ชื่อแพทย์', 'ชื่อ-สกุล'],
+  date: ['วันที่', 'วันที่รับบริการ'], hn: ['HN'], right: ['สิทธิ', 'สิทธิการรักษา'],
+  code: ['รหัสค่าใช้จ่าย', 'รหัส DF', 'รหัสค่าธรรมเนียม'], total: ['จำนวนเงินรวม', 'ยอดรวม'],
+  h20: ['รพ. 20%', 'รพ.20%'], d80: ['แพทย์ 80%', 'แพทย์80%'], diff: ['ส่วนต่าง'], dept: ['ฝ่าย'], note: ['หมายเหตุ']
+};
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise(function (ok, bad) {
+    var sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+    sc.onload = ok; sc.onerror = function () { bad(new Error('โหลดตัวอ่านไฟล์ Excel ไม่สำเร็จ ตรวจอินเทอร์เน็ตแล้วลองใหม่')); };
+    document.head.appendChild(sc);
+  });
+}
+function impDate(v) {
+  var y, m, d;
+  if (typeof v === 'number') {               // เลขวันที่ของ Excel
+    var dt = new Date(Math.round((v - 25569) * 86400000));
+    y = dt.getUTCFullYear(); m = dt.getUTCMonth() + 1; d = dt.getUTCDate();
+  } else {
+    var s = String(v || '').trim(), mm;
+    if ((mm = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/))) { y = +mm[1]; m = +mm[2]; d = +mm[3]; }
+    else if ((mm = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/))) { d = +mm[1]; m = +mm[2]; y = +mm[3]; }
+    else return '';
+  }
+  if (y > 2400) y -= 543;                     // ปี พ.ศ. → ค.ศ.
+  return y + '-' + String(m).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+}
+ROUTES.import = function () {
+  header('นำเข้าผลเบิกจาก Excel', 'ใช้กับเดือนที่ทำเบิกด้วยมือไปแล้ว เช่น ก.ย. 69 · ยอดในไฟล์จะเป็นยอดปิดรอบของเดือนนั้น', '');
+  V(note('info', 'รองรับไฟล์รูปแบบ <b>DF_DR_SMC_ดด.ปป_ปรับปรุงยอด.xlsx</b> (คอลัมน์: รหัสประจำตัว · แพทย์ · วันที่ · HN · สิทธิ · รหัสค่าใช้จ่าย · จำนวนเงินรวม · รพ. 20% · แพทย์ 80% · … · ส่วนต่าง · ฝ่าย · หมายเหตุ)<br>' +
+      'ไฟล์ถูกอ่านในเครื่องของท่าน ระบบส่งเฉพาะแถวข้อมูลไปบันทึก · หมายเหตุที่มีคำว่า <b>ค้างจ่าย</b> / <b>ระงับ</b> จะเข้าหน้าติดตามยอดค้างจ่ายให้เอง') +
+    card('1. เลือกไฟล์', '<label class="drop" id="impDrop"><input type="file" id="impFile" accept=".xlsx,.xls" hidden>' + I('file') +
+      '<b>คลิกเพื่อเลือกไฟล์ Excel</b><span class="muted small">หรือลากไฟล์มาวางที่นี่</span></label>', { icon: 'file' }) +
+    '<div id="impOut"></div>');
+  var inp = document.getElementById('impFile'), drop = document.getElementById('impDrop');
+  inp.onchange = function () { if (inp.files[0]) impRead(inp.files[0]); };
+  drop.ondragover = function (e) { e.preventDefault(); drop.classList.add('on'); };
+  drop.ondragleave = function () { drop.classList.remove('on'); };
+  drop.ondrop = function (e) { e.preventDefault(); drop.classList.remove('on'); if (e.dataTransfer.files[0]) impRead(e.dataTransfer.files[0]); };
+};
+function impRead(file) {
+  var out = document.getElementById('impOut');
+  out.innerHTML = '<div class="sk-msg"><span class="spin"></span>กำลังอ่าน ' + esc(file.name) + '</div>';
+  loadXlsxLib().then(function () {
+    return file.arrayBuffer();
+  }).then(function (buf) {
+    var wb = XLSX.read(buf, { type: 'array' });
+    var ws = wb.Sheets[wb.SheetNames[0]];
+    var aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+    var hi = -1, map = {};
+    for (var r = 0; r < Math.min(10, aoa.length) && hi < 0; r++) {
+      var hdr = aoa[r].map(function (x) { return String(x).trim(); });
+      if (hdr.indexOf('HN') >= 0 || hdr.indexOf('จำนวนเงินรวม') >= 0) {
+        hi = r;
+        for (var k in IMP_COLS) for (var c = 0; c < hdr.length; c++) if (IMP_COLS[k].indexOf(hdr[c]) >= 0 && map[k] === undefined) map[k] = c;
+      }
+    }
+    var need = ['dct', 'date', 'total'].filter(function (k) { return map[k] === undefined; });
+    if (hi < 0 || need.length) throw new Error('ไม่พบหัวคอลัมน์ที่จำเป็น: ' + (need.length ? need.map(function (k) { return IMP_COLS[k][0]; }).join(', ') : 'รหัสประจำตัว / วันที่ / จำนวนเงินรวม'));
+    var rows = [];
+    for (var i = hi + 1; i < aoa.length; i++) {
+      var a = aoa[i], g = function (k) { return map[k] === undefined ? '' : a[map[k]]; };
+      if (String(g('dct')).trim() === '') continue;
+      rows.push({ dct: String(g('dct')).replace(/\.0+$/, '').trim(), name: String(g('name')).trim(), date: impDate(g('date')),
+                  hn: String(g('hn')).replace(/\.0+$/, '').trim(), right: String(g('right')).trim(), code: String(g('code')).trim(),
+                  total: Number(g('total')) || 0, h20: Number(g('h20')) || 0, d80: Number(g('d80')) || 0,
+                  diff: Number(g('diff')) || 0, dept: String(g('dept')).trim(), note: String(g('note')).trim() });
+    }
+    impPreview(file.name, rows);
+  }).catch(function (e) { out.innerHTML = note('bad', esc(e.message)); });
+}
+function impPreview(fileName, rows) {
+  var ymCount = {}, by = {}, tot = 0, h20 = 0, d80 = 0, pend = 0, mis = 0;
+  rows.forEach(function (r) {
+    var ym = r.date.slice(0, 7); ymCount[ym] = (ymCount[ym] || 0) + 1;
+    if (!by[r.dct]) by[r.dct] = { dct: r.dct, name: r.name, dept: r.dept, items: 0, total: 0, d80: 0, h20: 0 };
+    var b = by[r.dct]; b.items++; b.total += r.total; b.d80 += r.d80; b.h20 += r.h20;
+    tot += r.total; h20 += r.h20; d80 += r.d80;
+    if (/ค้างจ่าย|ระงับ/.test(r.note)) pend++;
+    if (Math.abs(r.h20 + r.d80 - r.total) > 0.01 && (r.h20 || r.d80)) mis++;
+  });
+  var yms = Object.keys(ymCount).sort(function (a, b) { return ymCount[b] - ymCount[a]; });
+  var ym = yms[0] || '';
+  S.cache.imp = { fileName: fileName, rows: rows, ym: ym };
+  var list = Object.keys(by).map(function (k) { return by[k]; });
+  var html = '<div class="kpis">' + kpi('รอบเดือน', ymTh(ym), yms.length > 1 ? 'มีวันที่นอกรอบ ' + N(rows.length - ymCount[ym]) + ' แถว' : 'ทุกแถวอยู่ในรอบเดียวกัน', yms.length > 1 ? 'bad' : '', 'calendar') +
+    kpi('จำนวนรายการ', N(rows.length), N(list.length) + ' แพทย์', '', 'list') +
+    kpi('ยอดรวม (ฐาน)', B(tot), 'แพทย์ 80% ' + B(d80) + ' · รพ. 20% ' + B(h20), '', 'baht') +
+    kpi('ค้างจ่าย / ระงับ', N(pend), 'จะเข้าหน้าติดตามยอดค้างจ่าย', pend ? 'warn' : '', 'clock') + '</div>';
+  if (mis) html += note('warn', 'มี ' + N(mis) + ' แถวที่ รพ. 20% + แพทย์ 80% ไม่เท่ายอดรวม — ระบบใช้ "จำนวนเงินรวม" เป็นฐานแล้วคิด 80/20 ใหม่รายแพทย์');
+  html += card('2. ตรวจยอดรายแพทย์ก่อนนำเข้า', '<div id="tImp"></div>', { icon: 'users', raw: true,
+    sub: 'เทียบกับไฟล์ R101 ที่ส่งเบิกจริงได้เลย · ยอดนี้จะเป็นยอดปิดรอบ ' + ymTh(ym) });
+  html += card('3. ยืนยันนำเข้า', '<div class="ftb" style="padding:0;border:0">' +
+    '<label class="fld"><span>รอบเดือน</span><input type="month" id="impYm" value="' + ym + '"></label>' +
+    '<label class="fld"><span>หน่วยที่เบิก</span><select id="impGrp"><option value="DR">โรงพยาบาล (R101)</option><option value="ANC">ศูนย์สาขา/ฝากครรภ์ (R106)</option></select></label>' +
+    '<div class="btn-row"><button class="btn pri" onclick="impSubmit()">' + I('check', 'sm') + 'นำเข้าและปิดรอบ</button></div></div>' +
+    note('warn', 'ถ้ารอบนี้มีข้อมูลอยู่แล้ว (เช่น ที่ดึงจาก API ไม่ครบ) ยอดสรุปรายแพทย์ของรอบ/หน่วยนี้จะถูก<b>แทนที่</b>ด้วยยอดจากไฟล์ และจะไม่ถูกคำนวณทับภายหลัง'), { icon: 'check' });
+  document.getElementById('impOut').innerHTML = html;
+  TBL.make('tImp', { key: 'tImp', reset: true, rows: list, pageSize: 200, exportName: 'ตรวจนำเข้า_' + ym,
+    search: { placeholder: 'รหัส · ชื่อแพทย์ · ฝ่าย', keys: ['dct', 'name', 'dept'] },
+    filters: [{ type: 'select', k: 'dept', label: 'ฝ่าย' }], sort: { i: 4, d: -1 },
+    cols: [{ k: 'dct', label: 'รหัส', type: 'code' }, { k: 'name', label: 'แพทย์' }, { k: 'dept', label: 'ฝ่าย', cls: 'small muted' },
+           { k: 'items', label: 'รายการ', type: 'int', sum: true }, { k: 'total', label: 'ยอดรวม', type: 'money', sum: true },
+           { k: 'd80', label: 'แพทย์ 80%', type: 'money', sum: true }, { k: 'h20', label: 'รพ. 20%', type: 'money', sum: true }] });
+}
+function impSubmit() {
+  var I0 = S.cache.imp; if (!I0) return;
+  var ym = document.getElementById('impYm').value, grp = document.getElementById('impGrp').value;
+  UI.dialog({ title: 'นำเข้าและปิดรอบ ' + ymTh(ym), icon: 'lock', tone: 'warn',
+    body: note('warn', 'นำเข้า ' + N(I0.rows.length) + ' รายการจากไฟล์ <b>' + esc(I0.fileName) + '</b> เป็นยอดปิดรอบ ' + ymTh(ym)) +
+      '<label class="fld"><span>ยืนยันรหัสผ่านของท่าน</span><input id="impPass" type="password" autocomplete="current-password"></label>',
+    ok: 'นำเข้า',
+    onOk: function (el) {
+      var p = document.getElementById('impPass').value;
+      if (!p) return dlgErr(el, 'กรุณากรอกรหัสผ่าน');
+      return api('importMonth', { ym: ym, grp: grp, pass: p, fileName: I0.fileName, rows: I0.rows }, { write: true }).then(function (r) {
+        UI.alert({ title: 'นำเข้าเรียบร้อย', icon: 'check', tone: 'ok',
+          body: '<p>รอบ ' + ymTh(r.ym) + ' · ' + N(r.doctors) + ' แพทย์ · ' + N(r.rows) + ' รายการ</p><p>ยอดรวม <b>' + B(r.base) + '</b> · แพทย์ 80% ' + B(r.pay80) + ' · รพ. 20% ' + B(r.hos20) + '</p>' +
+                (r.pending ? '<p>เพิ่มรายการค้างจ่าย/ระงับ ' + N(r.pending) + ' รายการ</p>' : '') +
+                (r.warnings && r.warnings.length ? note('warn', 'ข้ามแถว ' + r.warnings.length + ' แถว: ' + r.warnings.slice(0, 5).map(esc).join(' · ')) : '') });
+        S.cache.imp = null; go('month', r.ym);
+      });
+    } });
 }
 function closeMonth(ym) {
   UI.dialog({ title: 'ยืนยันการปิดรอบ ' + ymTh(ym), icon: 'lock', tone: 'warn',
@@ -77,7 +227,7 @@ function closeMonth(ym) {
 }
 function reopenMonth(ym) {
   UI.dialog({ title: 'เปิดรอบ ' + ymTh(ym) + ' ใหม่', icon: 'alert', tone: 'bad',
-    body: note('bad', 'ใช้เฉพาะกรณีจำเป็น เช่น พบว่ายอดผิดก่อนส่งฝ่ายบริหารงานบุคคล · ยอดตอนปิดรอบยังเก็บไว้ตรวจตกเบิก และระบบบันทึกผู้สั่งไว้') +
+    body: note('bad', 'ใช้เฉพาะกรณีจำเป็น เช่น พบว่ายอดผิดก่อนส่งฝ่ายทรัพยากรบุคคล · ยอดตอนปิดรอบยังเก็บไว้ตรวจตกเบิก และระบบบันทึกผู้สั่งไว้') +
       '<label class="fld"><span>ยืนยันรหัสผ่านของท่าน</span><input id="roPass" type="password"></label>',
     ok: 'เปิดรอบใหม่', okCls: 'danger',
     onOk: function () { return api('reopenMonth', { ym: ym, grp: 'ALL', pass: document.getElementById('roPass').value }, { write: true }).then(function () { toast('เปิดรอบใหม่แล้ว', 'ok'); go('close', ym); }); } });
@@ -395,7 +545,7 @@ var SET_GROUPS = [
     ['incomeDRPay', 'แพทย์ทั่วไป · ส่วนแพทย์ 80%', 'text'], ['incomeDRHos', 'แพทย์ทั่วไป · ส่วนโรงพยาบาล 20%', 'text'],
     ['incomeANCPay', 'ศูนย์สาขา · ส่วนแพทย์ 80%', 'text'], ['incomeANCHos', 'ศูนย์สาขา · ส่วนโรงพยาบาล 20%', 'text'],
     ['jobCode', 'รหัสงาน', 'text'], ['idCardField', 'ช่องเลขบัตรประชาชน', 'text'] ] },
-  { t: 'รอบเบิกและการตกเบิก', i: 'calendar', keys: [['submitByDay', 'ส่งฝ่ายบริหารงานบุคคลไม่เกินวันที่', 'number'], ['recheckDays', 'ย้อนตรวจยอดที่เปลี่ยนหลังปิดรอบ (วัน)', 'number'],
+  { t: 'รอบเบิกและการตกเบิก', i: 'calendar', keys: [['submitByDay', 'ส่งฝ่ายทรัพยากรบุคคลไม่เกินวันที่', 'number'], ['recheckDays', 'ย้อนตรวจยอดที่เปลี่ยนหลังปิดรอบ (วัน)', 'number'],
     ['mergeViewAllGroups', 'หน้าจอรายงานรวมยอดทุกหน่วย', 'onoff'], ['notifyEmail', 'อีเมลรับแจ้งเตือนรอบเบิก', 'text'] ] },
   { t: 'สัญญา 40(6)', i: 'file', keys: [['contractCheck', 'ตรวจสัญญาอัตโนมัติ', 'onoff'], ['contractAction', 'เมื่อไม่พบสัญญา', 'contract'],
     ['doctorCanDownloadContract', 'ให้แพทย์ดาวน์โหลดสัญญาเองได้', 'yn'] ] },

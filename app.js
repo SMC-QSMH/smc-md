@@ -544,6 +544,7 @@ function menu() {
   if (isHr()) {
     m.push({ g: 'รอบเบิกและเอกสาร' });
     m.push({ p: 'close', ic: 'check', t: 'ตัดรอบและออกเอกสาร' });
+    m.push({ p: 'import', ic: 'file', t: 'นำเข้าผลเบิกจาก Excel' });
     m.push({ p: 'docs', ic: 'printer', t: 'ใบแจ้งยอดรายคน' });
     m.push({ p: 'contracts', ic: 'file', t: 'ทะเบียนสัญญา 40(6)', badge: n.contractFlags || 0 });
   }
