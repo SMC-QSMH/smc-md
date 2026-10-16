@@ -1,4 +1,4 @@
-/* SMC MD — pages.js (รุ่น 2569-10-15.1)
+/* SMC MD — pages.js (รุ่น 2569-10-16.1)
  * หน้าของแพทย์ · แดชบอร์ด · ตรวจรายวัน · สรุปรายเดือน · ติดตามยอดค้างจ่าย · หนี้เสีย · ตกเบิก
  * ทุกหน้าใช้ load() — เปิดซ้ำเห็นข้อมูลทันทีจากเครื่อง แล้วอัปเดตเบื้องหลัง
  */
@@ -37,9 +37,29 @@ function renderDoctorMonth(D, ym, isMine, meta) {
     kpi('ส่วนโรงพยาบาล', B(s.hos20), 'รหัสรายได้ ' + esc(h.incomeHos), '', 'pie') +
     kpi('ยอดค้างเรียกเก็บ', B(s.outstanding), s.pendingCount ? N(s.pendingCount) + ' รายการรอเรียกเก็บ' : 'ไม่มีรายการค้าง', s.outstanding > 0 ? 'warn' : '', 'clock') +
     kpi('ตกเบิกรอดำเนินการ', B(s.backpayAmount), s.backpayCount ? N(s.backpayCount) + ' รายการ' : 'ไม่มี', s.backpayAmount ? 'warn' : '', 'refresh') +
+    (s.backpayRound ? kpi('ตกเบิกที่จ่ายในรอบนี้', B(s.backpayRound), 'ยอดรับรองของรอบก่อน ๆ ที่นำเข้ารอบ ' + ymShort(ym), 'good', 'refresh') : '') +
+    (s.ttm ? kpi('แพทย์แผนไทย', B(s.ttm.pay80 + s.ttm.guar), N(s.ttm.rounds) + ' รอบเวร · ประกันรายได้ ' + N(s.ttm.guarRounds) + ' รอบ', 'good', 'leaf') : '') +
     '</div>';
+  if (s.ttm || s.backpayRound) html += note('info', 'ส่วนแพทย์ของรอบนี้ <b>' + B(s.doctorTotal) + '</b> บาท' +
+    (s.ttm ? ' (รวมแพทย์แผนไทย ' + B(s.ttm.pay80 + s.ttm.guar) + ' · คิดรายรอบเวร: DF 80% หรือประกันรายได้ อัตรา × ชั่วโมงเวร ถ้า DF 80% ต่ำกว่า)' : '') +
+    (s.backpayRound ? ' · และมีตกเบิกที่ HR นำเข้ารอบนี้ ยอดรับรอง ' + B(s.backpayRound) + ' บาท (คิดส่วนแพทย์ในไฟล์ HRMi ของรอบนี้)' : ''));
+  if (D.ttmRounds && D.ttmRounds.length) {
+    html += card('รอบเวรแพทย์แผนไทย', '<div class="tw"><table class="t compact tc"><thead><tr><th>วันที่</th><th>หน่วย</th><th>รอบ</th><th class="n">ผู้ป่วย</th><th class="n">DF 100%</th><th class="n">DF 80%</th><th class="n">ประกันรายได้</th><th>คิดแบบ</th></tr></thead><tbody>' +
+      D.ttmRounds.map(function (o) {
+        return '<tr><td data-label="วันที่">' + dTh(o.date) + '</td><td data-label="หน่วย">' + esc(o.unit) + '</td><td data-label="รอบ">' + esc(o.slotLabel) + '</td>' +
+          '<td class="n" data-label="ผู้ป่วย">' + N(o.patients) + '</td><td class="n" data-label="DF 100%">' + B(o.base) + '</td><td class="n" data-label="DF 80%">' + B(o.df80) + '</td>' +
+          '<td class="n" data-label="ประกันรายได้">' + (o.mode === 'guar' ? B(o.guar) : '—') + '</td><td data-label="คิดแบบ">' + (o.mode === 'guar' ? tag('ประกันรายได้', 'warn') : tag('DF 80%', 'ok')) + '</td></tr>';
+      }).join('') + '</tbody></table></div>', { icon: 'leaf', flush: true, fold: 'docTtm', sub: 'รอบที่คิดแบบประกันรายได้ DF 100% ของรอบนั้นเป็นรายได้คลินิก' });
+  }
+  if (D.backpayRound && D.backpayRound.length) {
+    html += card('ตกเบิกที่นำเข้ารอบนี้', '<div class="tw"><table class="t compact tc"><thead><tr><th>รอบที่ปิดไว้</th><th>วันที่</th><th>HN</th><th>ประเภท</th><th class="n">ยอดรับรอง</th></tr></thead><tbody>' +
+      D.backpayRound.map(function (b) {
+        return '<tr><td data-label="รอบที่ปิดไว้">' + esc(b.ymClosedTh) + '</td><td data-label="วันที่">' + (b.date ? dTh(b.date) : '—') + '</td><td data-label="HN" class="mono">' + esc(b.hn || '—') +
+          '</td><td data-label="ประเภท">' + tag(b.kind, b.diff > 0 ? 'ok' : 'bad') + '</td><td class="n" data-label="ยอดรับรอง">' + B(b.diff) + '</td></tr>';
+      }).join('') + '</tbody></table></div>', { icon: 'refresh', flush: true, fold: 'docBp' });
+  }
 
-  if (!s.items) return html + card('', emptyBox('รอบ ' + ymTh(ym) + ' ยังไม่มีรายการ', 'inbox'));
+  if (!s.items) return html + (s.ttm || s.backpayRound ? '' : card('', emptyBox('รอบ ' + ymTh(ym) + ' ยังไม่มีรายการ', 'inbox')));
 
   html += card('ยอดรายวัน', '<div class="chart" id="cDocDay"></div>', { icon: 'month', sub: 'แตะแท่งเพื่อดูรายการของวันนั้นในตารางด้านล่าง' });
 
@@ -85,7 +105,8 @@ function drawDoctorMonth(D) {
            { k: 'code', label: 'รหัส', render: function (r) { return '<span class="mono">' + esc(r.code) + '</span>' + (r.codeLabel ? '<span class="sub">' + esc(r.codeLabel) + '</span>' : ''); } },
            { k: 'total', label: 'เรียกเก็บ', type: 'money', sum: true }, { k: 'collected', label: 'เก็บได้', type: 'money', sum: true },
            { k: 'payable', label: 'นับจ่าย', type: 'money0', sum: true, get: function (r) { return r.counted ? r.payable : 0; } },
-           { k: 'status', label: 'สถานะ', render: function (r) { return tag(r.status) + (r.reason ? '<span class="sub">' + esc(r.reason) + '</span>' : ''); } }]
+           { k: 'status', label: 'สถานะ', render: function (r) { return tag(r.status) + (r.slotLabel ? '<span class="sub">รอบ ' + esc(r.slotLabel) + '</span>' : '') +
+               (r.fromDct ? '<span class="sub">โอนมาจากรหัส ' + esc(r.fromDct) + '</span>' : '') + (r.reason ? '<span class="sub">' + esc(r.reason) + '</span>' : ''); } }]
   });
 }
 
@@ -219,7 +240,9 @@ function drawDash(D) {
   if (tr.length) {
     CH.bar('cTrend', { labels: tr.map(function (t) { return ymShort(t.ym); }), stacked: true,
       series: [{ label: 'แพทย์ทั่วไป (R101)', data: tr.map(function (t) { return (t.byGrp || {}).DR || 0; }), color: getComputedStyle(document.documentElement).getPropertyValue('--c0').trim() },
-               { label: 'ศูนย์สาขา (R106)', data: tr.map(function (t) { return (t.byGrp || {}).ANC || 0; }), color: getComputedStyle(document.documentElement).getPropertyValue('--c1').trim() }],
+               { label: 'ศูนย์สาขา (R106)', data: tr.map(function (t) { return (t.byGrp || {}).ANC || 0; }), color: getComputedStyle(document.documentElement).getPropertyValue('--c1').trim() }]
+               .concat(tr.some(function (t) { var g = t.byGrp || {}; return (g.TTH || 0) + (g.TTB || 0) + (g.TTP || 0) > 0; })
+                 ? [{ label: 'แพทย์แผนไทย (R121/R123)', data: tr.map(function (t) { var g = t.byGrp || {}; return (g.TTH || 0) + (g.TTB || 0) + (g.TTP || 0); }), color: getComputedStyle(document.documentElement).getPropertyValue('--c3').trim() }] : []),
       onClick: function (i) { go('month', tr[i].ym); } });
   }
   if (F) {
@@ -265,21 +288,26 @@ ROUTES.month = function (ym) {
       D.groups.map(function (g) { return tag(g.grpName + ' · ' + g.statusTh, g.status === 'closed' ? 'ok' : 'warn'); }).join(' ') + '</div>' + freshBadge(meta) + '</div>';
     if (D.waitGroup) html += note('bad', 'มี <b>' + N(D.waitGroup) + '</b> รายการที่จับกลุ่มการเบิกไม่ได้ ยังไม่รวมอยู่ในตาราง และต้องจัดให้ครบก่อนปิดรอบ <a href="#day">ไปตรวจรายวัน</a>');
     if (s.contractIssues) html += note('warn', 'มี <b>' + N(s.contractIssues) + '</b> แพทย์ที่ข้อมูลสัญญา 40(6) ยังไม่เรียบร้อย — กดปุ่มกรอง "สัญญาต้องตรวจ" ด้านล่าง');
+    if (D.noShift) html += note('bad', 'แพทย์แผนไทยมี <b>' + N(D.noShift) + '</b> รายการที่ไม่พบเวรในตาราง SMC Duty — ยังไม่จ่ายจนกว่าจะมีเวรที่อนุมัติ <a href="#ttmItems:' + ym + '">ไปตรวจรายการแผนไทย</a>');
+    if (s.backpayRoundCount) html += note('info', 'รอบนี้มีตกเบิก/เรียกคืนที่ HR นำเข้าแล้ว <b>' + N(s.backpayRoundCount) + '</b> รายการ · ส่วนแพทย์ ' + B(s.backpayRound) + ' บาท จะรวมในไฟล์ HRMi ของรอบนี้ <a href="#backpay">ดูรายการ</a>');
     html += '<div class="kpis">' +
       kpi('ยอดรับรองรวม', B(s.base), 'ฐานคำนวณ 80/20', 'hero', 'baht') +
       kpi('ส่วนแพทย์', B(s.pay80), 'ยอดที่ต้องเบิก', 'good', 'steth') +
       kpi('ส่วนโรงพยาบาล', B(s.hos20), 'รายได้โรงพยาบาล', '', 'pie') +
       kpi('แพทย์ที่มียอด', N(s.doctors) + '<small>ท่าน</small>', N(s.cases) + ' เคส · ' + N(s.items) + ' รายการ', '', 'users') +
       kpi('ค้างเรียกเก็บ', B(s.outstanding), 'ยังไม่จ่าย รอเรียกเก็บครบ', s.outstanding ? 'warn' : '', 'clock', "go('pending')") +
+      (s.guar ? kpi('ประกันรายได้แพทย์แผนไทย', B(s.guar), 'R121 · รวมส่วนแพทย์ทั้งหมด ' + B(s.doctorTotal), 'warn', 'leaf', "go('ttm','" + ym + "')") : '') +
+      (s.clinicIncome ? kpi('เข้ารายได้คลินิก', B(s.clinicIncome), 'DF รอบประกันรายได้ / DF ที่ระงับ', '', 'pie') : '') +
       (s.writeoff ? kpi('หนี้เสีย/หนี้ศูนย์', B(s.writeoff), 'ไม่นับเป็นรายได้', 'bad', 'slash', "go('writeoff')") : '') + '</div>';
     if (!D.rows.length) { V(html + card('', emptyBox('รอบ ' + ymTh(ym) + ' ยังไม่มีข้อมูล'))); return; }
     html += card('แพทย์ยอดสูงสุด 15 อันดับ', '<div class="chart lg" id="cMonTop"></div>', { icon: 'steth', sub: 'แตะแท่งเพื่อเปิดใบแจ้งยอดรายคน' });
     html += card('รายละเอียดรายแพทย์', '<div id="tMonth"></div>', { icon: 'list', flush: true, sub: 'แตะแถวเพื่อเปิดใบแจ้งยอด · ส่งออก Excel ได้' });
     V(html);
-    var top = D.rows.slice(0, 15);
+    var top = D.rows.slice().sort(function (a, b) { return (b.doctorTotal || b.base) - (a.doctorTotal || a.base); }).slice(0, 15);   /* ตารางเรียงฝ่าย→รหัส กราฟเรียงยอด */
     CH.bar('cMonTop', { horizontal: true, labels: top.map(function (r) { return r.dctName || r.dct; }),
       series: [{ label: 'ยอดรับรอง', data: top.map(function (r) { return r.base; }) }], onClick: function (i) { go('docs', top[i].dct + '|' + ym); } });
-    TBL.make('tMonth', { key: 'tMonth', rows: D.rows, exportName: 'สรุปรายเดือน_' + ym, sort: { i: 6, d: -1 },
+    var hasG = D.rows.some(function (r) { return r.guar > 0; });
+    TBL.make('tMonth', { key: 'tMonth', rows: D.rows, exportName: 'สรุปรายเดือน_' + ym, orders: ordersFor(),
       search: { placeholder: 'รหัส · ชื่อแพทย์ · ฝ่าย', keys: ['dct', 'dctName', 'dept'] },
       filters: [{ type: 'select', k: 'grpNames', label: 'หน่วย' }, { type: 'select', k: 'dept', label: 'ฝ่าย/สาขา' }, { type: 'min', k: 'base', label: 'ยอดขั้นต่ำ' }],
       chips: [{ id: 'out', label: 'มีค้างเก็บ', tone: 'warn', fn: function (r) { return r.outstanding > 0; } },
@@ -294,7 +322,9 @@ ROUTES.month = function (ym) {
              { k: 'cases', label: 'เคส', type: 'int', sum: true }, { k: 'items', label: 'รายการ', type: 'int', sum: true },
              { k: 'contractOk', label: 'สัญญา', sort: false, render: function (r) { return r.contractOk ? tag('มีสัญญา', 'ok') : '<span class="tag warn" title="' + esc(r.contractFlag) + '">ตรวจสอบ</span>'; } },
              { k: 'base', label: 'ยอดรับรอง', type: 'money', sum: true }, { k: 'pay80', label: 'ส่วนแพทย์', type: 'money', sum: true },
-             { k: 'hos20', label: 'ส่วน รพ.', type: 'money', sum: true }, { k: 'outstanding', label: 'ค้างเก็บ', type: 'money0', sum: true }] });
+             { k: 'hos20', label: 'ส่วน รพ.', type: 'money', sum: true }]
+        .concat(hasG ? [{ k: 'guar', label: 'ประกันรายได้', type: 'money0', sum: true }, { k: 'doctorTotal', label: 'แพทย์ได้รับรวม', type: 'money', sum: true }] : [])
+        .concat([{ k: 'outstanding', label: 'ค้างเก็บ', type: 'money0', sum: true }]) });
   }, { msg: 'กำลังรวมยอดรอบ ' + ymTh(ym) });
 };
 
@@ -361,7 +391,7 @@ function renderDay(D, meta) {
   /* ยอดเปลี่ยน/หายจากการดึงครั้งก่อน */
   var ch = D.changes || [];
   if (ch.length) {
-    var c0 = ch[0];
+    var c0 = ch[0], chFold = true;
     var rowsChg = [];
     c0.removed.forEach(function (x) { rowsChg.push({ k: 'rm', x: x }); });
     c0.changed.forEach(function (x) { rowsChg.push({ k: 'ch', x: x }); });
@@ -382,7 +412,7 @@ function renderDay(D, meta) {
       }).join('') + (rowsChg.length > 40 ? '<div class="muted small">และอีก ' + N(rowsChg.length - 40) + ' รายการ</div>' : '') + '</div>' +
       (ch.length > 1 ? '<details style="margin-top:12px"><summary class="small muted" style="cursor:pointer">ประวัติการเปลี่ยนแปลงก่อนหน้า (' + (ch.length - 1) + ' ครั้ง)</summary><ul class="small">' +
         ch.slice(1).map(function (c) { return '<li>' + esc(c.at) + ' · หาย ' + N(c.counts.removed) + ' · เปลี่ยน ' + N(c.counts.changed) + ' · เพิ่ม ' + N(c.counts.added) + '</li>'; }).join('') + '</ul></details>' : ''),
-      { icon: 'swap', sub: 'ระบบดึงทับย้อนหลัง 7 วันทุกคืน จึงเห็นการแก้ไขย้อนหลังในระบบโรงพยาบาล' });
+      { icon: 'swap', sub: 'ระบบดึงทับย้อนหลัง 7 วันทุกคืน จึงเห็นการแก้ไขย้อนหลังในระบบโรงพยาบาล', fold: 'dayChg' });
   }
 
   /* ผู้ป่วยที่มาแต่ไม่มี DF */
@@ -394,17 +424,20 @@ function renderDay(D, meta) {
     } else if (vv.error) {
       html += card('ผู้ป่วยที่มารับบริการแต่ไม่มี DF', note('bad', esc(vv.error)), { icon: 'users' });
     } else {
-      html += card('ผู้ป่วยที่มารับบริการแต่ไม่มี DF', '<div class="kpis" style="margin:0 0 12px">' +
+      html += card('ผู้ป่วยที่มารับบริการแต่ไม่มี DF', note('info', '<b>"ไม่มี DF เลย"</b> = ผู้ป่วยมีชื่อในรายการมารับบริการ (visit) ของวันนี้ แต่<b>ไม่พบรายการ DF ใดเลย</b>ของ HN นั้นในวันเดียวกัน — ' +
+        'มักเกิดจากลืมคีย์ DF · คีย์ไว้วันอื่น · หรือเป็นคลินิกที่ไม่มี DF ตามปกติ (เช่น คลินิกเด็กดี) ซึ่งตั้งค่า "คลินิกที่ไม่ต้องเทียบ" ได้ที่ <a href="#settings">ตั้งค่าระบบ</a>' +
+        (vv.excluded ? ' · วันนี้ไม่เทียบตามที่ตั้งค่าไว้ ' + N(vv.excluded) + ' visit' : '') + '<br><b>"มี DF แต่ไม่ใช่แพทย์ผู้ตรวจ"</b> = HN นี้มี DF แต่ลงชื่อแพทย์คนอื่น ไม่ใช่แพทย์ที่ตรวจตาม visit') +
+        '<div class="kpis" style="margin:0 0 12px">' +
         kpi('ผู้รับบริการทั้งหมด', N(vv.visits), 'ตาม API รายชื่อผู้รับบริการ', '', 'users') +
         kpi('ไม่มี DF เลย', N(vv.noDf.length), 'อาจลืมคีย์ DF', vv.noDf.length ? 'bad' : 'good', 'alert') +
         kpi('มี DF แต่ไม่ใช่ของแพทย์ผู้ตรวจ', N(vv.noDctDf.length), 'อาจคีย์ผิดแพทย์', vv.noDctDf.length ? 'warn' : 'good', 'swap') +
         kpi('visit ที่ยกเลิก', N((vv.cancelled || []).length), 'ไม่นับว่าขาด DF', '', 'slash') + '</div>' +
-        '<div id="tVisit"></div>', { icon: 'users', sub: 'เทียบด้วย HN และรหัสแพทย์' });
+        '<div id="tVisit"></div>', { icon: 'users', sub: 'เทียบด้วย HN และรหัสแพทย์ · แตะหัวการ์ดเพื่อพับ/กาง', fold: 'dayVisit' });
     }
   }
 
-  html += card('รายการทั้งหมด', '<div id="tDay"></div>', { icon: 'list', flush: true, sub: 'แตะแถวเพื่อดูรายละเอียด' + (isHr() ? ' / แก้สถานะ' : '') });
-  html += card('สรุปรายแพทย์', '<div id="tDayDoc"></div>', { icon: 'steth', flush: true, sub: 'แตะแถวเพื่อกรองรายการของแพทย์ท่านนั้น' });
+  html += card('รายการทั้งหมด', '<div id="tDay"></div>', { icon: 'list', flush: true, fold: 'dayRows', sub: 'แตะแถวเพื่อดูรายละเอียด' + (isHr() ? ' / แก้สถานะ' : '') + (isHr() || isAcct() ? ' / ระงับ · โอน DF ที่ลงชื่อผิดคน' : '') });
+  html += card('สรุปรายแพทย์', '<div id="tDayDoc"></div>', { icon: 'steth', flush: true, fold: 'dayDoc', sub: 'แตะแถวเพื่อกรองรายการของแพทย์ท่านนั้น' });
   return html;
 }
 
@@ -442,7 +475,10 @@ function drawDay(D) {
   var chips = [{ id: 'notcnt', label: 'ไม่นับจ่ายทั้งหมด', tone: 'warn', fn: function (r) { return !r.counted; } }]
     .concat(Object.keys(ISS).map(function (k) { return { id: 'is_' + k, label: ISS[k].label, tone: ISS[k].tone === 'bad' ? 'bad' : (ISS[k].tone === 'warn' ? 'warn' : ''), fn: function (r) { return r.issue === k; } }; }))
     .concat([{ id: 'flags', label: 'มีข้อสังเกตข้อมูล', fn: function (r) { return r.flags && r.flags.length; }, hideEmpty: true }]);
-  TBL.make('tDay', { key: 'tDay', reset: true, rows: D.rows, exportName: 'รายการDF_' + D.date, pageSize: 100,
+  var canRe = isHr() || isAcct();
+  TBL.make('tDay', { key: 'tDay', reset: true, rows: D.rows, exportName: 'รายการDF_' + D.date, pageSize: 100, select: canRe,
+    actions: canRe ? '<button class="btn sm" onclick="reassignSel(\'tDay\',\'suspend\')">' + I('slash', 'sm') + 'ระงับเข้าคลินิก</button>' +
+                     '<button class="btn sm" onclick="reassignSel(\'tDay\',\'transfer\')">' + I('swap', 'sm') + 'โอนให้แพทย์</button>' : '',
     search: { placeholder: 'HN · รหัส · ชื่อแพทย์ · สิทธิ', keys: ['hn', 'vn', 'dct', 'dctName', 'code', 'codeLabel', 'pttype', 'clinic', 'status', 'reason'] },
     filters: [{ type: 'select', k: 'dct', label: 'แพทย์', labelOf: function (r) { return r.dctName || r.dct; } },
               { type: 'select', k: 'pttype', label: 'สิทธิการรักษา' },
@@ -451,7 +487,9 @@ function drawDay(D) {
     chips: chips,
     rowCls: function (r) { return r.issue === 'wait' || r.issue === 'code' ? 'flag' : (r.counted ? '' : 'dim'); },
     onRow: function (r) { dayDetail(r); },
-    cols: [{ k: 'dctName', label: 'แพทย์', render: function (r) { return esc(r.dctName || '—') + '<span class="sub mono">' + esc(r.dct || '') + '</span>'; } },
+    cols: [{ k: 'dctName', label: 'แพทย์', render: function (r) { return esc(r.dctName || '—') + '<span class="sub mono">' + esc(r.dct || '') + '</span>' +
+               (r.fromDct ? '<span class="sub">' + (r.aliasFrom ? 'รหัสเดิม ' : 'โอนมาจาก ') + esc(r.fromDct) + '</span>' : '') +
+               (r.noContract ? '<span class="sub badc">⚠ ไม่มีสัญญา 40(6)</span>' : ''); } },
            { k: 'hn', label: 'HN', type: 'hn' },
            { k: 'pttype', label: 'สิทธิการรักษา', cls: 'small' },
            { k: 'code', label: 'รหัส', render: function (r) { return '<span class="mono">' + esc(r.code) + '</span>' + (r.codeLabel ? '<span class="sub">' + esc(r.codeLabel) + '</span>' : ''); } },
@@ -459,8 +497,13 @@ function drawDay(D) {
            { k: 'total', label: 'เรียกเก็บ', type: 'money', sum: true }, { k: 'collected', label: 'เก็บได้', type: 'money', sum: true },
            { k: 'payable', label: 'นับจ่าย', type: 'money0', sum: true, get: function (r) { return r.counted ? r.payable : 0; } },
            { k: 'status', label: 'สถานะ', render: function (r) { return tag(r.status) + (r.manual ? ' ' + tag('สั่งโดยเจ้าหน้าที่', 'info') : '') +
-               (r.flags.length ? '<span class="sub">' + esc(r.flags.join(' · ')) + '</span>' : ''); } }] });
+               (r.slotLabel ? '<span class="sub">รอบเวร ' + esc(r.slotLabel) + '</span>' : '') +
+               (r.flags.length ? '<span class="sub">' + esc(r.flags.join(' · ')) + '</span>' : '') +
+               (r.noContract && canRe ? '<span class="sub" style="margin-top:4px"><button class="btn sm qk" data-id="' + esc(r.id) + '" data-from="' + esc(r.dct0 || r.dct) + '" onclick="event.stopPropagation();dayQuick(this,\'suspend\')">ระงับ</button> ' +
+                 '<button class="btn sm qk" data-id="' + esc(r.id) + '" data-from="' + esc(r.dct0 || r.dct) + '" onclick="event.stopPropagation();dayQuick(this,\'transfer\')">โอน</button></span>' : ''); } }] });
 }
+
+function dayQuick(btn, action) { reassignDlg([btn.getAttribute('data-id')], action, btn.getAttribute('data-from')); }
 
 function dayDetail(r) {
   var rows = [['วันที่', dTh(r.date)], ['แพทย์', esc(r.dctName || '—') + ' <span class="mono muted">' + esc(r.dct) + '</span>'],
@@ -471,13 +514,24 @@ function dayDetail(r) {
     ['นับจ่าย', r.counted ? '<b>' + B(r.payable) + '</b>' : '<span class="muted">ไม่นับ</span>'],
     ['สถานะ', tag(r.status) + (r.manual ? ' ' + tag('สั่งโดยเจ้าหน้าที่', 'info') : '')]];
   if (r.entryUser) rows.push(['ผู้คีย์', esc(r.entryUser) + ' ' + esc(r.entryTime)]);
-  var body = (r.reason ? note(r.counted ? 'info' : 'warn', esc(r.reason)) : '') +
+  if (r.slotLabel) rows.push(['รอบเวร (แผนไทย)', esc(r.slotLabel) + (r.vtime ? ' · ลงทะเบียน ' + esc(r.vtime) : '')]);
+  if (r.fromDct) rows.push([r.aliasFrom ? 'รหัสเดิมจากระบบ รพ.' : 'ลงชื่อในระบบ รพ.', '<span class="mono">' + esc(r.fromDct) + '</span>']);
+  var canRe = isHr() || isAcct();
+  var body = (r.noContract ? note('bad', '<b>DF ลงชื่อรหัสที่ไม่มีสัญญา 40(6)</b> — อาจเป็นพยาบาล/PN คีย์แทนแพทย์ · เลือก <b>ระงับ · เข้ารายได้คลินิก</b> หรือ <b>โอนให้แพทย์ที่ถูกต้อง</b> ด้านล่าง (ฝ่ายบัญชี/HR ทำได้ทันที ไม่ต้องรออนุมัติ)') : '') +
+    (r.reassign ? note('info', '<b>' + (r.reassign.action === 'suspend' ? 'ระงับ · เข้ารายได้คลินิก' : 'โอนให้รหัส ' + esc(r.reassign.toDct)) + '</b>' +
+      (r.reassign.scope === 'month' ? ' (คำสั่งทั้งเดือนของรหัสนี้)' : '') + ' · ' + esc(r.reassign.category) + ' · ' + esc(r.reassign.reason) +
+      '<br><span class="small">โดย ' + esc(r.reassign.by) + ' · ' + esc(r.reassign.at) + '</span>') : '') +
     (r.flags && r.flags.length ? note('warn', 'ข้อสังเกตข้อมูล: ' + esc(r.flags.join(' · '))) : '') +
     '<dl class="dl">' + rows.map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + x[1] + '</dd>'; }).join('') + '</dl>';
   UI.drawer({ title: 'รายละเอียดรายการ', sub: esc(r.dctName || r.dct) + ' · ' + dTh(r.date), body: body,
-    foot: (isHr() ? '<button class="btn pri" id="dEdit">' + I('edit', 'sm') + 'แก้สถานะ / ระงับจ่าย</button>' : '') +
+    foot: (isHr() ? '<button class="btn" id="dEdit">' + I('edit', 'sm') + 'แก้สถานะ</button>' : '') +
+      (canRe && !r.reassign ? '<button class="btn" id="dSus">' + I('slash', 'sm') + 'ระงับ · เข้าคลินิก</button><button class="btn" id="dTr">' + I('swap', 'sm') + 'โอนให้แพทย์</button>' : '') +
+      (canRe && r.reassign ? '<button class="btn" id="dUndo">' + I('refresh', 'sm') + 'ยกเลิกคำสั่งระงับ/โอน</button>' : '') +
       '<button class="btn" onclick="UI.closeDrawer()">ปิด</button>' });
   var b = document.getElementById('dEdit'); if (b) b.onclick = function () { editCase(r); };
+  var bs = document.getElementById('dSus'); if (bs) bs.onclick = function () { UI.closeDrawer(true); reassignDlg([r.id], 'suspend', r.dct0 || r.dct); };
+  var bt = document.getElementById('dTr'); if (bt) bt.onclick = function () { UI.closeDrawer(true); reassignDlg([r.id], 'transfer', r.dct0 || r.dct); };
+  var bu = document.getElementById('dUndo'); if (bu) bu.onclick = function () { UI.closeDrawer(true); reassignUndo(r.reassign.id); };
 }
 
 function doSync(date) {
@@ -672,28 +726,93 @@ ROUTES.writeoff = function () {
   });
 };
 
-/* ═══════════════ ตกเบิก / เรียกคืน ═══════════════ */
+/* ═══════════════ ตกเบิก / เรียกคืน (รุ่น 16.1 ข้อ 6 — รายรายการ · HR นำเข้ารอบจ่าย) ═══════════════ */
+var BP_TONE = { open: 'warn', assigned: 'info', paid: 'ok', waived: '', cancelled: '' };
 ROUTES.backpay = function (ym) {
-  header('ตกเบิก / เรียกคืน', 'ยอดที่เปลี่ยนหลังปิดรอบ', refreshBtn());
+  header('ตกเบิก / เรียกคืน', 'ยอดที่เปลี่ยนหลังปิดรอบ · รายรายการ · HR เลือกนำเข้ารอบจ่าย', refreshBtn());
   load('getBackpay', { ym: ym || '' }, function (D, meta) {
-    var html = '<div class="kpis">' + kpi('รอดำเนินการ', B(D.amount), N(D.openCount) + ' รายการ', D.openCount ? 'warn' : 'good', 'refresh') +
-      kpi('ทั้งหมด', N(D.count) + '<small>รายการ</small>', 'ย้อนตรวจ ' + esc(D.recheckDays) + ' วัน', '', 'list') + '</div>' + note('info', esc(D.note));
+    S.cache.bp = D;
+    var sumOf = function (f) { return D.rows.filter(f).reduce(function (a, r) { return a + r.diff; }, 0); };
+    var up = D.rows.filter(function (r) { return r.status === 'open' && r.diff > 0; }), dn = D.rows.filter(function (r) { return r.status === 'open' && r.diff < 0; });
+    var asg = D.rows.filter(function (r) { return r.status === 'assigned'; });
+    var html = '<div class="btn-row" style="justify-content:flex-end;margin-bottom:10px">' + freshBadge(meta) + '</div><div class="kpis">' +
+      kpi('ตกเบิกรอนำเข้ารอบ', B(sumOf(function (r) { return r.status === 'open' && r.diff > 0; })), N(up.length) + ' รายการ · ยอดรับรอง', up.length ? 'hero' : 'good', 'refresh', "TBL.setChip('tBp','up')") +
+      kpi('เรียกคืนรอตัดสิน', B(sumOf(function (r) { return r.status === 'open' && r.diff < 0; })), N(dn.length) + ' รายการ', dn.length ? 'bad' : 'good', 'alert', "TBL.setChip('tBp','down')") +
+      kpi('นำเข้ารอบแล้ว รอปิดรอบ', B(sumOf(function (r) { return r.status === 'assigned'; })), N(asg.length) + ' รายการ', asg.length ? 'warn' : '', 'calendar', "TBL.setChip('tBp','asg')") +
+      kpi('จ่ายแล้ว', N(D.rows.filter(function (r) { return r.status === 'paid'; }).length) + '<small>รายการ</small>', 'ล็อกตามรอบที่ปิดแล้ว', '', 'check', "TBL.setChip('tBp','paid')") + '</div>' +
+      note('info', '<b>ขั้นตอน</b> 1) ระบบตรวจพบยอดเปลี่ยนหลังปิดรอบเป็นรายรายการ (เคสเดียวกันที่ทั้งระบบ รพ. และฝ่ายบัญชีแจ้ง นับครั้งเดียว) · ' +
+        '2) HR ติ๊กเลือก แล้วกด <b>นำเข้ารอบจ่าย</b> · 3) ไฟล์ HRMi ของรอบนั้นรวมยอดกับรหัสรายได้เดียวกันให้เอง · 4) ปิดรอบนั้นแล้ว รายการเป็น "จ่ายแล้ว" ' +
+        '· <b>เรียกคืน</b> ต้องตรวจสาเหตุก่อน แล้วเลือกนำเข้ารอบ (หักคืน) หรือ <b>ไม่เรียกคืน</b> พร้อมเหตุผล');
     if (!D.count) return V(html + card('', note('ok', 'ยอดทุกรอบที่ปิดแล้วยังตรงกับระบบโรงพยาบาล ไม่มีรายการตกเบิก')));
-    html += card('รายการ', '<div id="tBp"></div>', { icon: 'list', flush: true, acts: freshBadge(meta) }) +
-      note('warn', '<b>ตกเบิกเพิ่ม</b> ให้นำส่วนต่างไปรวมในรอบเบิกเดือนถัดไป · <b>เรียกคืน</b> เกิดจากยอดในระบบโรงพยาบาลลดลงหลังปิดรอบ ต้องตรวจสาเหตุก่อนดำเนินการ');
+    html += card('รายการ', '<div id="tBp"></div>', { icon: 'list', flush: true, sub: D.canEdit ? 'ติ๊กเลือกแล้วใช้ปุ่มด้านบนตาราง' : '' });
     V(html);
-    TBL.make('tBp', { key: 'tBp', rows: D.rows, exportName: 'ตกเบิก_เรียกคืน',
-      search: { placeholder: 'รหัส · ชื่อแพทย์', keys: ['dct', 'dctName', 'kind'] },
-      filters: [{ type: 'select', k: 'ymClosed', label: 'รอบที่ปิดไว้', labelOf: function (r) { return r.ymClosedTh; } }, { type: 'select', k: 'kind', label: 'ประเภท' }],
+    var first = S.bpChip || 'open'; S.bpChip = '';
+    var canSel = function (r) { return r.status === 'open' || r.status === 'assigned'; };
+    TBL.make('tBp', { key: 'tBp', rows: D.rows, exportName: 'ตกเบิก_เรียกคืน', select: !!D.canEdit, canSelect: canSel, initial: { chip: first },
+      orders: ordersFor({ amount: 'diff' }),
+      search: { placeholder: 'รหัส · ชื่อแพทย์ · HN', keys: ['dct', 'dctName', 'kind', 'hn', 'note'] },
+      filters: [{ type: 'select', k: 'ymClosed', label: 'รอบที่ปิดไว้', labelOf: function (r) { return r.ymClosedTh; } },
+                { type: 'select', k: 'ymPay', label: 'นำเข้ารอบ', labelOf: function (r) { return r.ymPayTh || '(ยังไม่นำเข้า)'; } },
+                { type: 'select', k: 'grpName', label: 'หน่วย' }, { type: 'select', k: 'dct', label: 'แพทย์', labelOf: function (r) { return r.dctName || r.dct; } }],
       chips: [{ id: 'open', label: 'รอดำเนินการ', tone: 'warn', fn: function (r) { return r.status === 'open'; } },
-              { id: 'up', label: 'ตกเบิกเพิ่ม', fn: function (r) { return r.diff > 0; } }, { id: 'down', label: 'เรียกคืน', tone: 'bad', fn: function (r) { return r.diff < 0; } }],
+              { id: 'up', label: 'ตกเบิกเพิ่ม', fn: function (r) { return r.status === 'open' && r.diff > 0; } },
+              { id: 'down', label: 'เรียกคืน', tone: 'bad', fn: function (r) { return r.status === 'open' && r.diff < 0; } },
+              { id: 'asg', label: 'นำเข้ารอบแล้ว', fn: function (r) { return r.status === 'assigned'; } },
+              { id: 'paid', label: 'จ่ายแล้ว', fn: function (r) { return r.status === 'paid'; } },
+              { id: 'wv', label: 'ไม่เรียกคืน/ยกเลิก', fn: function (r) { return r.status === 'waived'; }, hideEmpty: true }],
+      actions: D.canEdit ? '<button class="btn sm pri" onclick="bpAssign()">' + I('calendar', 'sm') + 'นำเข้ารอบจ่าย</button>' +
+                           '<button class="btn sm" onclick="bpUnassign()">ถอนออกจากรอบ</button>' +
+                           '<button class="btn sm" onclick="bpWaive()">' + I('slash', 'sm') + 'ไม่เรียกคืน/ยกเลิก</button>' : '',
+      rowCls: function (r) { return r.diff < 0 && r.status === 'open' ? 'flag' : (r.status === 'paid' || r.status === 'waived' ? 'dim' : ''); },
       cols: [{ k: 'ymClosedTh', label: 'รอบที่ปิดไว้', cls: 'nowrap' },
+             { k: 'date', label: 'วันที่รับบริการ', type: 'date' }, { k: 'hn', label: 'HN', type: 'hn' },
              { k: 'dctName', label: 'แพทย์', render: function (r) { return esc(r.dctName || '—') + '<span class="sub mono">' + esc(r.dct) + '</span>'; } },
              { k: 'grpName', label: 'หน่วย', cls: 'small' },
              { k: 'closedBase', label: 'ตอนปิดรอบ', type: 'money' }, { k: 'currentBase', label: 'ปัจจุบัน', type: 'money' },
-             { k: 'diff', label: 'ส่วนต่าง', type: 'money', sum: true, render: function (r) { return '<b class="' + (r.diff > 0 ? 'good' : 'badc') + '">' + (r.diff > 0 ? '+' : '') + B(r.diff) + '</b>'; } },
-             { k: 'kind', label: 'ประเภท', render: function (r) { return tag(r.kind, r.diff > 0 ? 'ok' : 'bad'); } },
-             { k: 'status', label: 'สถานะ', render: function (r) { return tag(r.status === 'open' ? 'รอดำเนินการ' : r.status, r.status === 'open' ? 'warn' : ''); } },
-             { k: 'detectedAt', label: 'ตรวจพบเมื่อ', cls: 'small muted' }] });
+             { k: 'diff', label: 'ส่วนต่าง (ยอดรับรอง)', type: 'money', sum: true, render: function (r) { return '<b class="' + (r.diff > 0 ? 'good' : 'badc') + '">' + (r.diff > 0 ? '+' : '') + B(r.diff) + '</b>'; } },
+             { k: 'doctorAmt', label: 'ส่วนแพทย์', type: 'money', sum: true },
+             { k: 'kind', label: 'ประเภท', render: function (r) { return tag(r.kind, r.diff > 0 ? 'ok' : 'bad') + (r.source ? '<span class="sub">' + esc(({ acct: 'ฝ่ายบัญชีแจ้งรับเงิน', his: 'ระบบ รพ.', agg: 'ยอดรวมต่อแพทย์ (รอบก่อนรุ่น 16.1)' })[r.source] || r.source) + '</span>' : ''); } },
+             { k: 'statusTh', label: 'สถานะ', render: function (r) { return tag(r.statusTh, BP_TONE[r.status]) + (r.ymPayTh ? '<span class="sub">รอบจ่าย ' + esc(r.ymPayTh) + '</span>' : '') +
+                 (r.decision ? '<span class="sub">' + esc(r.decision) + (r.decidedBy ? ' · ' + esc(r.decidedBy) : '') + '</span>' : ''); } },
+             { k: 'note', label: 'หมายเหตุ', cls: 'small wrap' }] });
   });
 };
+function bpPick(f) {
+  var sel = TBL.selected('tBp').filter(f || function () { return true; });
+  if (!sel.length) { toast('ยังไม่ได้เลือกรายการ — ติ๊กช่องหน้าแถวก่อน', 'warn'); return null; }
+  return sel;
+}
+function bpAssign() {
+  var sel = bpPick(function (r) { return r.status === 'open' || r.status === 'assigned'; }); if (!sel) return;
+  var D = S.cache.bp, sum = sel.reduce(function (a, r) { return a + r.diff; }, 0), neg = sel.filter(function (r) { return r.diff < 0; }).length;
+  var def = (D.openYms.filter(function (y) { return y.ym >= thisYm(); })[0] || D.openYms[0] || {}).ym;
+  UI.dialog({ title: 'นำเข้ารอบจ่าย ' + N(sel.length) + ' รายการ', icon: 'calendar', sub: 'ยอดรับรองรวม ' + B(sum) + ' บาท',
+    body: (neg ? note('warn', 'มีรายการเรียกคืน ' + N(neg) + ' รายการ — จะหักจากยอดของแพทย์ท่านนั้นในรอบที่เลือก (ถ้าหักแล้วติดลบ ระบบแจ้งเตือนตอนออกไฟล์ HRMi)') : '') +
+      '<label class="fld"><span>นำเข้ารอบ (ต้องเป็นรอบที่ยังไม่ปิด)</span><select id="bpYm">' + D.openYms.map(function (y) { return '<option value="' + y.ym + '"' + (y.ym === def ? ' selected' : '') + '>' + esc(y.ymTh) + '</option>'; }).join('') + '</select></label>' +
+      note('info', 'ไฟล์ HRMi ของรอบที่เลือกจะรวมยอดตกเบิกเข้ากับรหัสรายได้เดียวกันของแพทย์ท่านนั้น · ไม่มียอดขั้นต่ำ · ถอนออกได้จนกว่าจะปิดรอบ'),
+    ok: 'นำเข้ารอบ',
+    onOk: function () {
+      return api('assignBackpay', { ids: sel.map(function (r) { return r.id; }), ymPay: mv('bpYm') }, { write: true }).then(function (r) {
+        toast('นำเข้ารอบแล้ว ' + N(r.done) + ' รายการ' + (r.errors && r.errors.length ? ' · ไม่สำเร็จ ' + r.errors.length + ': ' + r.errors.slice(0, 2).join(' · ') : ''), r.errors && r.errors.length ? 'warn' : 'ok', 9000);
+        S.bpChip = 'asg'; go('backpay');
+      });
+    } });
+}
+function bpUnassign() {
+  var sel = bpPick(function (r) { return r.status === 'assigned'; }); if (!sel) return;
+  UI.confirm({ title: 'ถอน ' + N(sel.length) + ' รายการออกจากรอบจ่าย?', body: '<p>รายการจะกลับเป็น "รอดำเนินการ" และไม่อยู่ในไฟล์ HRMi ของรอบนั้น</p>', ok: 'ถอนออก' }).then(function (y) {
+    if (!y) return;
+    api('unassignBackpay', { ids: sel.map(function (r) { return r.id; }) }, { write: true })
+      .then(function (r) { toast('ถอนออกแล้ว ' + N(r.done) + ' รายการ', 'ok'); go('backpay'); }).catch(function (e) { toast(e.message, 'bad', 9000); });
+  });
+}
+function bpWaive() {
+  var sel = bpPick(function (r) { return r.status === 'open'; }); if (!sel) return;
+  UI.dialog({ title: 'ไม่เรียกคืน / ยกเลิก ' + N(sel.length) + ' รายการ', icon: 'slash', tone: 'warn',
+    body: '<label class="fld"><span>เหตุผล (บันทึกไว้ตรวจย้อนได้)</span><textarea id="bpWhy" placeholder="เช่น ผู้ป่วยชำระที่เคาน์เตอร์แล้ว รอระบบ รพ. ปรับ · ยอดต่างจากการปัดเศษ"></textarea></label>',
+    ok: 'บันทึก',
+    onOk: function (el) {
+      var why = mv('bpWhy'); if (why.length < 5) return dlgErr(el, 'กรุณาระบุเหตุผลอย่างน้อย 5 ตัวอักษร');
+      return api('waiveBackpay', { ids: sel.map(function (r) { return r.id; }), reason: why }, { write: true }).then(function (r) { toast('บันทึกแล้ว ' + N(r.done) + ' รายการ', 'ok'); go('backpay'); });
+    } });
+}

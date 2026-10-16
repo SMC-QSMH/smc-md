@@ -507,3 +507,103 @@ tr:hover .copy{opacity:1}
 .syncbar>div{flex:1;min-width:0}
 .pbar{height:6px;border-radius:6px;background:var(--line);margin-top:8px;overflow:hidden}
 .pbar i{display:block;height:100%;background:var(--brand);transition:width .4s}
+
+/* ══════════════ รุ่น 2569-10-16.1 ══════════════ */
+/* ข้อ 9 — จอ 1440×900 ซูม 100%: ตัวเลขใหญ่ไม่ล้นกรอบ · แถบวันไม่บีบตัวอักษร */
+.kpis{grid-template-columns:repeat(auto-fit,minmax(178px,1fr))}
+.kpi .v{font-size:clamp(17px,1.5vw,25px);overflow-wrap:anywhere}
+.kpi .d{overflow-wrap:anywhere}
+.strip button{width:68px}
+.strip button em{font-size:10.5px;white-space:nowrap;letter-spacing:-.01em}
+.top .acts{flex-wrap:wrap;justify-content:flex-end}
+.top .acts .inp.sm{width:auto;min-width:0}
+
+/* ข้อ 3 — เมนูเป็นหมวด พับ/กางได้ */
+.nav .grp{display:flex;align-items:center;gap:6px;width:calc(100% - 4px);border:0;background:transparent;cursor:pointer;text-align:left;padding:6px 10px;margin:10px 2px 4px;border-radius:8px;font:inherit;font-size:11.5px;letter-spacing:.06em;color:var(--side-mute);font-weight:600}
+.nav .grp:hover{background:rgba(255,255,255,.06);color:var(--side-ink)}
+.nav .grp>span:first-child{flex:1}
+.nav .grp svg{transition:transform .18s;transform:rotate(90deg);opacity:.7}
+.nav .grp.shut svg{transform:none}
+.nav .grp .pill{background:var(--accent);color:#fff;border-radius:99px;font-size:10.5px;padding:0 6px;line-height:16px;letter-spacing:0}
+.nav .grp-b.shut{display:none}
+.btn-mini{display:inline-flex}
+/* แถบข้างแบบย่อ (เฉพาะไอคอน) */
+.shell.mini{--side-w:70px}
+.shell.mini .side-head{padding:16px 10px}
+.shell.mini .side-head .logo-t,.shell.mini .nav a span,.shell.mini .nav .grp,.shell.mini .me .who,.shell.mini .side-foot .acts .btn,.shell.mini .ver{display:none}
+.shell.mini .nav .grp-b.shut{display:block}
+.shell.mini .nav .grp-b{border-top:1px solid rgba(255,255,255,.08);padding-top:6px;margin-top:6px}
+.shell.mini .nav a{justify-content:center;padding:10px 0}
+.shell.mini .nav a .pill{position:absolute;top:2px;right:4px;font-size:10px;padding:0 5px;line-height:15px;min-width:0}
+.shell.mini .me{justify-content:center;background:transparent}
+.shell.mini .side-foot .acts{justify-content:center}
+
+/* ข้อ 7 — การ์ดพับได้ */
+details.card>summary{list-style:none;cursor:pointer;user-select:none}
+details.card>summary::-webkit-details-marker{display:none}
+details.card:not([open])>summary{border-bottom:0}
+details.card .fold-ar{color:var(--ink-3);display:inline-flex;transition:transform .18s}
+details.card[open] .fold-ar{transform:rotate(90deg)}
+details.card>summary:hover h3{color:var(--brand)}
+
+/* ข้อ 10 — จอเล็ก: ตารางเป็นการ์ดรายแถว */
+@media (max-width:760px){
+  table.t.tc thead{display:none}
+  table.t.tc,table.t.tc tbody,table.t.tc tfoot{display:block;width:100%}
+  table.t.tc tr{display:block;border-bottom:1px solid var(--line);padding:8px 12px}
+  table.t.tc tbody tr:hover td{background:transparent}
+  table.t.tc td{display:block;position:relative;border:0;padding:3px 0 3px 42%;white-space:normal;text-align:right;min-width:0;min-height:24px}
+  table.t.tc td::before{content:attr(data-label);position:absolute;left:0;top:3px;width:40%;color:var(--ink-3);font-size:12.5px;text-align:left;white-space:normal}
+  table.t.tc td[data-label=""]{padding-left:0}
+  table.t.tc td .sub{text-align:right}
+  table.t.tc td[data-label=""]::before{display:none}
+  table.t.tc td.wrap{min-width:0}
+  table.t.tc td .sub{max-width:none;min-width:0}
+  table.t.tc td.first{position:static}
+  table.t.tc tfoot tr{position:static;background:var(--card-2)}
+  table.t.tc tfoot td{position:static;border:0;background:transparent;padding:3px 0}
+  table.t.tc tbody tr.flag{background:color-mix(in srgb,var(--warn-bg) 65%,var(--card))}
+  table.t.tc tbody tr.flag td{background:transparent}
+  table.t.tc td>input[type=checkbox]{float:right}
+  .tw{overflow:visible}
+  .btn-mini{display:none}
+  .copy{opacity:1}
+}
+
+/* ส่วนที่พิมพ์ (รายงานต้องตรวจสอบ · รายงานแพทย์แผนไทย) */
+#printArea{display:none}
+.pr{font-size:12.5px;color:#000;background:#fff}
+.pr h2{font-size:16px;text-align:center;margin:0 0 2px}
+.pr .pr-sub{text-align:center;font-size:12.5px;margin-bottom:10px}
+.pr table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:11.5px}
+.pr th,.pr td{border:1px solid #666;padding:3px 5px;vertical-align:top}
+.pr th{background:#eee;font-weight:600;text-align:center}
+.pr td.n{text-align:right;white-space:nowrap}
+.pr tfoot td{font-weight:700;background:#f5f5f5}
+.pr .pr-blk{break-inside:avoid;page-break-inside:avoid;margin-bottom:10px}
+.pr .pr-h{font-weight:700;font-size:13px;margin:12px 0 2px;border-bottom:2px solid #000;padding-bottom:2px}
+.pr .pr-page{page-break-after:always;break-after:page}
+.pr .pr-page:last-child{page-break-after:auto;break-after:auto}
+.pr .sign{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:26px;text-align:center;break-inside:avoid}
+.pr .sign div{line-height:1.9}
+.pr .muted{color:#555}
+@media print{
+  body.print-mode #app,body.print-mode #layer,body.print-mode .toasts,body.print-mode #boot,body.print-mode .loadbar{display:none !important}
+  body.print-mode #printArea{display:block}
+  body.print-mode>div[style*="C2872F"]{display:none !important}
+  details.card{display:block}
+  details.card>summary .fold-ar{display:none}
+  table.t.tc thead{display:table-header-group}
+}
+
+/* แพทย์แผนไทย — ตารางแบบ Excel */
+.xl td.mode-guar{background:color-mix(in srgb,var(--warn-bg) 70%,var(--card))}
+.unit-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.unit-tabs button{border:1px solid var(--line);background:var(--card);border-radius:12px;padding:8px 14px;cursor:pointer;text-align:left;line-height:1.35;font:inherit}
+.unit-tabs button b{display:block;font-size:14px}
+.unit-tabs button small{color:var(--ink-3);font-size:12px}
+.unit-tabs button.on{border-color:var(--brand);background:var(--brand-soft)}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rate-row{display:flex;gap:8px;align-items:flex-end;margin-bottom:8px}
+.rate-row .fld{margin:0;flex:1}
+.btn.qk{min-height:26px;padding:2px 9px;font-size:12.5px}

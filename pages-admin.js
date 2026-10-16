@@ -1,4 +1,4 @@
-/* SMC MD — pages-admin.js (รุ่น 2569-10-15.1)
+/* SMC MD — pages-admin.js (รุ่น 2569-10-16.1)
  * ตัดรอบและออกเอกสาร · ใบแจ้งยอดรายคน · ทะเบียนสัญญา 40(6) · สิทธิ · รหัส DF
  * กฎจัดกลุ่ม · ตั้งค่าระบบ · ผู้ใช้งาน · ประวัติการใช้งาน
  */
@@ -26,6 +26,9 @@ ROUTES.close = function (ym) {
       kpi('รอจัดกลุ่ม', N(D.waitGroup), D.waitGroup ? 'ต้องจัดก่อนปิดรอบ' : 'เรียบร้อย', D.waitGroup ? 'bad' : 'good', 'shuffle', D.waitGroup ? "go('day')" : '') + '</div>';
     if (D.waitGroup) html += note('bad', '<b>ยังปิดรอบไม่ได้</b> — มี ' + N(D.waitGroup) + ' รายการที่จับกลุ่มการเบิกไม่ได้ <a href="#day">ไปตรวจรายวัน</a> หรือ <a href="#groups">ตั้งกฎจัดกลุ่ม</a>');
     if (s.contractIssues) html += note('warn', 'มี ' + N(s.contractIssues) + ' แพทย์ที่ข้อมูลสัญญา 40(6) ยังไม่เรียบร้อย · ปิดรอบได้ แต่ควรตรวจก่อน <a href="#contracts">ตรวจทะเบียน</a>');
+    if (D.noShift) html += note('warn', 'แพทย์แผนไทยมี ' + N(D.noShift) + ' รายการที่ไม่พบเวร — ไม่ถูกนับจ่ายในรอบนี้ (ถ้าเพิ่มเวรภายหลังจะขึ้นเป็นตกเบิก) <a href="#ttmItems:' + ym + '">ตรวจรายการแผนไทย</a>');
+    if (s.backpayRoundCount) html += note('info', 'ไฟล์ HRMi รอบนี้จะรวมตกเบิก/เรียกคืนที่นำเข้าแล้ว <b>' + N(s.backpayRoundCount) + '</b> รายการ (ส่วนแพทย์ ' + B(s.backpayRound) + ' บาท) · ปิดรอบแล้วรายการเหล่านี้เป็น "จ่ายแล้ว" <a href="#backpay">ดูรายการ</a>');
+    else html += note('info', 'ยังไม่มีตกเบิกที่นำเข้ารอบนี้ · ถ้ามีรายการตกเบิกรอดำเนินการ ให้ไป <a href="#backpay">ตกเบิก / เรียกคืน</a> แล้วกด "นำเข้ารอบจ่าย" ก่อนออกไฟล์ HRMi');
 
     var q = function (x) { return "'" + x + "'"; };
     var steps = [
@@ -38,7 +41,7 @@ ROUTES.close = function (ym) {
                      : '<button class="btn pri" onclick="closeMonth(' + q(ym) + ')"' + (D.waitGroup ? ' disabled' : '') + '>' + I('lock', 'sm') + 'ปิดรอบ ' + ymShort(ym) + '</button>' },
       { t: 'ออกรายงานขอเบิกส่งฝ่ายทรัพยากรบุคคล', d: 'Google Sheet พร้อมหัวรายงาน ยอดรวม และช่องลงนาม สั่งพิมพ์เป็น PDF ได้ทันที',
         b: '<button class="btn" onclick="mkDoc(\'buildHrReport\',{ym:' + q(ym) + ',grp:\'ALL\'},this)">' + I('file', 'sm') + 'ออกรายงานขอเบิก</button>' },
-      { t: 'ออกไฟล์นำเข้า HRMi', d: 'ไฟล์ 7 คอลัมน์ · แยกรหัสรายได้ R101 (โรงพยาบาล) และ R106 (ศูนย์สาขา) · มีทั้ง Google Sheet และ CSV',
+      { t: 'ออกไฟล์นำเข้า HRMi', d: 'ไฟล์ 7 คอลัมน์ · แยกรหัสรายได้ R101 (โรงพยาบาล) · R106 (ศูนย์สาขา) · แพทย์แผนไทย R121/R123 แยกบล็อก (ประกันรายได้ R121) · รวมตกเบิกที่นำเข้ารอบนี้ · เรียงฝ่าย → รหัส',
         b: '<button class="btn" onclick="mkDoc(\'buildHrmiFiles\',{ym:' + q(ym) + ',grp:\'ALL\'},this)">' + I('download', 'sm') + 'ออกไฟล์ HRMi</button>' },
       { t: 'ส่งรายการที่จ่ายแล้วกลับฝ่ายไอที', d: 'ไฟล์ CSV บอกว่ารายการใดจ่ายในรอบใด เพื่อกันการเบิกซ้ำ',
         b: '<button class="btn" onclick="mkDoc(\'buildPaidExport\',{ym:' + q(ym) + ',grp:\'ALL\'},this)">' + I('download', 'sm') + 'ออกไฟล์ส่งไอที</button>' },
@@ -300,35 +303,136 @@ function viewSlip() {
    ทะเบียนสัญญา 40(6)
    ═══════════════════════════════════════════════════════ */
 ROUTES.contracts = function () {
-  header('ทะเบียนสัญญา 40(6)', 'การเบิกค่าตอบแทนต้องมีสัญญาประกอบ · ระบบขึ้นธงเตือน ไม่ระงับจ่ายเอง',
+  header('ทะเบียนสัญญา 40(6)', 'แพทย์ทุกคนที่รับเงิน 80/20 (รวมทันตแพทย์และแพทย์แผนไทย) ต้องมีสัญญา · ระบบขึ้นธงเตือน ไม่ระงับจ่ายเอง',
+    '<button class="btn sm pri" onclick="bulkContracts()">' + I('upload', 'sm') + '<span class="lbl">อัปโหลดหลายไฟล์</span></button>' +
+    '<button class="btn sm" onclick="mergeDlg()">' + I('swap', 'sm') + '<span class="lbl">รวมรายชื่อ (ชื่อพิมพ์ผิด)</span></button>' +
     (isAdmin() ? '<button class="btn sm" onclick="editAlias()">' + I('swap', 'sm') + '<span class="lbl">รหัสแพทย์ที่เปลี่ยน</span></button>' : '') + refreshBtn());
   load('getRegistry', { kind: 'contracts' }, function (D, meta) {
-    S.cache.registry = D;
+    S.cache.registry = D; S.cache.docList = null;
+    var showH = !!S.conHidden, rows = D.doctors.filter(function (d) { return showH ? d.hidden : !d.hidden; });
+    var vis = D.doctors.filter(function (d) { return !d.hidden; });
     var html = '<div class="kpis">' +
-      kpi('แพทย์ในทะเบียน', N(D.doctors.length), 'ราย', '', 'users') +
-      kpi('ไม่มีสัญญา', N(D.noContract || 0), 'ไม่พบวันเริ่มสัญญา', D.noContract ? 'bad' : 'good', 'alert', "TBL.setChip('tCon','none')") +
+      kpi('แพทย์ในทะเบียน', N(vis.length), 'ราย (ไม่รวมที่ซ่อน)', '', 'users') +
+      kpi('ไม่มีสัญญา', N(vis.filter(function (d) { return !d.contract.startDate; }).length), 'ไม่พบวันเริ่มสัญญา', D.noContract ? 'bad' : 'good', 'alert', "TBL.setChip('tCon','none')") +
       kpi('ขึ้นธงรอตรวจ', N(D.contractFlags || 0), '', D.contractFlags ? 'warn' : 'good', 'alert', "TBL.setChip('tCon','flag')") +
-      kpi('ยังไม่แนบไฟล์', N(D.noFile || 0), 'ไม่ขึ้นธง', '', 'file', "TBL.setChip('tCon','nofile')") + '</div>';
-    html += card('รายชื่อ', '<div id="tCon"></div>', { icon: 'file', flush: true, acts: freshBadge(meta), sub: 'แตะแถวเพื่อแก้ไขข้อมูลสัญญา / แนบไฟล์' });
+      kpi('ยังไม่แนบไฟล์', N(vis.filter(function (d) { return !d.contract.hasFile; }).length), 'ไม่ขึ้นธง', '', 'file', "TBL.setChip('tCon','nofile')") +
+      kpi('ซ่อนไว้', N(D.hiddenCount || 0), showH ? 'กำลังแสดงรายชื่อที่ซ่อน' : 'แตะเพื่อดู / กู้คืน', '', 'eyeoff', 'S.conHidden=!S.conHidden;go(\'contracts\')') + '</div>';
+    if (showH) html += note('info', 'กำลังแสดง <b>รายชื่อที่ซ่อนไว้</b> (ไม่ขึ้นธง ไม่นับในรายงานตรวจสอบ) · แตะแถวเพื่อกู้คืน <a href="javascript:void(0)" onclick="S.conHidden=false;go(\'contracts\')">กลับไปรายชื่อปกติ</a>');
+    html += card(showH ? 'รายชื่อที่ซ่อนไว้' : 'รายชื่อ', '<div id="tCon"></div>', { icon: 'file', flush: true, acts: freshBadge(meta), sub: 'แตะแถวเพื่อแก้ไขสัญญา / แนบไฟล์ / ซ่อน / รวมรายชื่อ' });
     V(html);
-    TBL.make('tCon', { key: 'tCon', rows: D.doctors, exportName: 'ทะเบียนสัญญา40(6)', idOf: function (d) { return d.code; },
+    TBL.make('tCon', { key: 'tCon', rows: rows, exportName: 'ทะเบียนสัญญา40(6)', idOf: function (d) { return d.code; }, orders: ordersFor({ code: 'code', name: 'fullName', amount: 'lastBase' }),
       search: { placeholder: 'รหัส · ชื่อ · ฝ่าย · เลขที่สัญญา', keys: ['code', 'fullName', 'dept', function (d) { return d.contract.contractNo; }] },
-      filters: [{ type: 'select', k: 'dept', label: 'ฝ่าย/สาขา' }, { type: 'select', k: 'cst', label: 'สถานะสัญญา', get: function (d) { return d.contract.status || ''; } }],
+      filters: [{ type: 'select', k: 'dept', label: 'ฝ่าย/สาขา' }, { type: 'select', k: 'grpTh', label: 'หน่วย', get: function (d) { return GRP_NAMES[d.grp] || d.grp || ''; } },
+                { type: 'select', k: 'cst', label: 'สถานะสัญญา', get: function (d) { return d.contract.status || ''; } }],
       chips: [{ id: 'flag', label: 'ขึ้นธง', tone: 'warn', fn: function (d) { return !!d.contract.flag; } },
               { id: 'none', label: 'ไม่มีสัญญา', tone: 'bad', fn: function (d) { return !d.contract.startDate; } },
               { id: 'nofile', label: 'ยังไม่แนบไฟล์', fn: function (d) { return !d.contract.hasFile; } },
-              { id: 'paid', label: 'มียอดรอบล่าสุด', fn: function (d) { return d.lastBase > 0; } }],
-      rowCls: function (d) { return d.contract.flag ? 'flag' : ''; },
+              { id: 'paid', label: 'มียอดรอบล่าสุด', fn: function (d) { return d.lastBase > 0; } },
+              { id: 'tt', label: 'แพทย์แผนไทย', fn: function (d) { return /^TT|VTH/.test(d.grp || ''); }, hideEmpty: true }],
+      rowCls: function (d) { return d.hidden ? 'dim' : d.contract.flag ? 'flag' : ''; },
       onRow: function (d) { editContract(d.code); },
-      cols: [{ k: 'code', label: 'รหัส', type: 'code' }, { k: 'fullName', label: 'ชื่อ - สกุล', render: function (d) { return '<b>' + esc(d.fullName || '—') + '</b><span class="sub">' + esc(d.dept || '') + '</span>'; } },
+      cols: [{ k: 'code', label: 'รหัส', type: 'code' }, { k: 'fullName', label: 'ชื่อ - สกุล', render: function (d) { return '<b>' + esc(d.fullName || '—') + '</b><span class="sub">' + esc(d.dept || '') + (d.grp && GRP_NAMES[d.grp] ? ' · ' + esc(GRP_NAMES[d.grp]) : '') + '</span>'; } },
              { k: 'cno', label: 'เลขที่สัญญา', get: function (d) { return d.contract.contractNo; }, cls: 'small' },
              { k: 'cstart', label: 'วันเริ่มสัญญา', type: 'date', get: function (d) { return d.contract.startDate; } },
              { k: 'file', label: 'ไฟล์', sort: false, render: function (d) { return d.contract.hasFile ? tag('มีไฟล์', 'ok') : tag('ยังไม่แนบ'); } },
              { k: 'lastBase', label: 'ยอดรอบล่าสุด', type: 'money0' },
-             { k: 'flag', label: 'สถานะ / ข้อสังเกต', cls: 'wrap small', get: function (d) { return d.contract.flag || d.contract.status; },
-               render: function (d) { return d.contract.flag ? '<span class="warnc">⚠ ' + esc(d.contract.flag) + '</span>' : esc(d.contract.status || '—'); } }] });
+             { k: 'flag', label: 'สถานะ / ข้อสังเกต', cls: 'wrap small', get: function (d) { return d.hidden ? 'ซ่อนไว้' : (d.contract.flag || d.contract.status); },
+               render: function (d) { return d.hidden ? tag('ซ่อนไว้') + (d.note ? '<span class="sub">' + esc(d.note) + '</span>' : '') : d.contract.flag ? '<span class="warnc">⚠ ' + esc(d.contract.flag) + '</span>' : esc(d.contract.status || '—'); } }] });
   }, { msg: 'กำลังโหลดทะเบียนสัญญา' });
 };
+
+/* ───── ข้อ 13: ซ่อน / กู้คืน / รวมรายชื่อ ───── */
+function hideDoc(code, hide) {
+  if (!hide) return api('restoreDoctor', { code: code }, { write: true }).then(function () { toast('กู้คืนรายชื่อแล้ว', 'ok'); go('contracts'); }).catch(function (e) { toast(e.message, 'bad', 9000); });
+  UI.dialog({ title: 'ซ่อนรายชื่อ ' + code, icon: 'eyeoff', tone: 'warn',
+    body: note('info', 'ซ่อนแล้ว: ไม่ขึ้นธง "ไม่มีสัญญา" · ไม่แสดงในทะเบียนปกติ · <b>กู้คืนได้ทุกเมื่อ</b> · ถ้าระบบโรงพยาบาลส่ง DF ของรหัสนี้มาอีก รายการยังอยู่และตรวจได้ (ระบบไม่สร้างรายชื่อใหม่ซ้ำ)') +
+      '<label class="fld"><span>เหตุผล</span><input id="hdWhy" placeholder="เช่น เป็นพยาบาล ไม่ใช่แพทย์ · แพทย์ลาออกแล้ว"></label>', ok: 'ซ่อนรายชื่อ',
+    onOk: function (el) {
+      var w = mv('hdWhy'); if (w.length < 3) return dlgErr(el, 'กรุณาระบุเหตุผล');
+      return api('hideDoctor', { code: code, reason: w }, { write: true }).then(function () { toast('ซ่อนรายชื่อแล้ว · กู้คืนได้ที่ปุ่ม "ซ่อนไว้"', 'ok', 8000); go('contracts'); });
+    } });
+}
+function mergeDlg(oldCode) {
+  var D = S.cache.registry || { doctors: [] };
+  UI.dialog({ title: 'รวมรายชื่อที่ชื่อพิมพ์ผิด / รหัสซ้ำ', icon: 'swap', tone: 'warn', wide: true,
+    body: note('warn', 'ยอดทั้งหมดของ<b>รหัสที่ผิด</b>จะย้ายไปเป็นของ<b>รหัสที่ถูกต้อง</b> (ทุกเดือนที่ยังไม่ปิด · เดือนที่ปิดแล้วขึ้นเป็นตกเบิก/เรียกคืนให้) · รหัสที่ผิดถูกซ่อน · ยกเลิกได้โดยแอดมินที่ "รหัสแพทย์ที่เปลี่ยน"') +
+      '<datalist id="mgDocs">' + D.doctors.map(function (d) { return '<option value="' + esc(d.code) + '">' + esc(d.fullName || '') + '</option>'; }).join('') + '</datalist>' +
+      '<div class="frow"><label class="fld"><span>รหัสที่ผิด (จะถูกรวมและซ่อน)</span><input id="mgOld" list="mgDocs" value="' + esc(oldCode || '') + '"><div class="hint" id="mgOldN"></div></label>' +
+      '<label class="fld"><span>รหัสที่ถูกต้อง</span><input id="mgNew" list="mgDocs"><div class="hint" id="mgNewN"></div></label></div>' +
+      '<label class="fld"><span>เหตุผล</span><input id="mgWhy" placeholder="เช่น ชื่อพิมพ์ผิด เป็นคนเดียวกัน ตรวจเลขบัตรแล้ว"></label>' +
+      '<label class="chk"><input type="checkbox" id="mgOk"><div><b>ตรวจแล้วว่าเป็นบุคคลเดียวกัน</b><small>ถ้ารวมผิด เงินจะเข้าผิดคน</small></div></label>',
+    ok: 'รวมรายชื่อ', okCls: 'danger',
+    onOpen: function (el) {
+      var nm = function (c) { var d = D.doctors.filter(function (x) { return x.code === c; })[0]; return d ? esc(d.fullName || '') + (d.contract.startDate ? ' · มีสัญญา' : ' · ไม่มีสัญญา') + (d.lastBase ? ' · ยอดล่าสุด ' + B(d.lastBase) : '') : (c ? 'ไม่พบในทะเบียน' : ''); };
+      ['Old', 'New'].forEach(function (k) { var i = el.querySelector('#mg' + k), h = el.querySelector('#mg' + k + 'N'); i.addEventListener('input', function () { h.innerHTML = nm(i.value.trim()); }); h.innerHTML = nm(i.value.trim()); });
+    },
+    onOk: function (el) {
+      if (!document.getElementById('mgOk').checked) return dlgErr(el, 'กรุณาติ๊กยืนยันว่าเป็นบุคคลเดียวกัน');
+      return api('mergeDoctor', { oldCode: mv('mgOld'), newCode: mv('mgNew'), reason: mv('mgWhy') }, { write: true })
+        .then(function (r) { toast(r.note, 'ok', 9000); go('contracts'); });
+    } });
+}
+
+/* ───── ข้อ 11: อัปโหลดสัญญาหลายไฟล์ (ชื่อไฟล์ รหัส_ชื่อ.pdf) ───── */
+function bulkContracts() {
+  var inp = document.createElement('input'); inp.type = 'file'; inp.multiple = true; inp.accept = '.pdf,image/*';
+  inp.onchange = function () { if (inp.files.length) bulkPreview([].slice.call(inp.files)); };
+  inp.click();
+}
+function bulkPreview(files) {
+  var D = S.cache.registry || { doctors: [] }, byCode = {};
+  D.doctors.forEach(function (d) { byCode[String(d.code)] = d; });
+  var list = files.map(function (f) {
+    var m = /^\s*(\d{3,10})\s*[_\-\s]/.exec(f.name) || /^\s*(\d{3,10})\./.exec(f.name);
+    var code = m ? m[1] : '', d = byCode[code];
+    return { f: f, code: code, name: d ? d.fullName : '', start: d ? (d.contract.startDate || '') : '', has: d ? !!d.contract.hasFile : false,
+             ok: !!d && f.size <= 8 * 1024 * 1024, why: !code ? 'ชื่อไฟล์ไม่ขึ้นต้นด้วยรหัส' : !d ? 'ไม่พบรหัสในทะเบียน' : f.size > 8 * 1024 * 1024 ? 'ไฟล์ใหญ่เกิน 8 MB' : '' };
+  });
+  /* หลายไฟล์ของคนเดียวกัน → อัปโหลดทุกไฟล์ (เก่าก่อน ใหม่ทีหลัง) ไฟล์ล่าสุดเป็นฉบับที่ใช้ ฉบับเก่าเก็บในโฟลเดอร์ประวัติ */
+  list.sort(function (a, b) { return a.code < b.code ? -1 : a.code > b.code ? 1 : a.f.lastModified - b.f.lastModified; });
+  var cnt = {}; list.forEach(function (x) { if (x.ok) cnt[x.code] = (cnt[x.code] || 0) + 1; });
+  var seen = {}; list.forEach(function (x) { if (!x.ok) return; seen[x.code] = (seen[x.code] || 0) + 1; x.latest = seen[x.code] === cnt[x.code]; x.multi = cnt[x.code] > 1; });
+  S.cache.bulk = list;
+  var good = list.filter(function (x) { return x.ok; }).length;
+  UI.dialog({ title: 'อัปโหลดสัญญา ' + N(files.length) + ' ไฟล์', icon: 'upload', wide: true,
+    sub: 'พร้อมอัปโหลด ' + N(good) + ' ไฟล์ · ข้าม ' + N(files.length - good) + ' ไฟล์',
+    body: note('info', 'จับรหัสจากชื่อไฟล์ <b>รหัส_ชื่อ.pdf</b> · ถ้ามีไฟล์เดิม ไฟล์เดิมย้ายไปโฟลเดอร์ประวัติ (ไม่ลบ) · วันเริ่มสัญญาใช้จากทะเบียน ถ้าว่างกรอกในตารางได้ (เว้นว่าง = ไม่เปลี่ยน)') +
+      '<div class="tw" style="max-height:48vh"><table class="t compact"><thead><tr><th>ไฟล์</th><th>รหัส</th><th>ชื่อในทะเบียน</th><th>วันเริ่มสัญญา</th><th>ผล</th></tr></thead><tbody>' +
+      list.map(function (x, i) {
+        return '<tr class="' + (x.ok ? '' : 'flag') + '"><td class="small">' + esc(x.f.name) + '</td><td class="mono">' + esc(x.code || '—') + '</td><td>' + esc(x.name || '—') + '</td>' +
+          '<td>' + (x.ok ? '<input type="date" class="inp sm bkS" data-i="' + i + '" value="' + esc(x.start) + '"' + (x.multi && !x.latest ? ' disabled title="ใช้วันที่ของไฟล์ล่าสุด"' : '') + '>' : '') + '</td>' +
+          '<td class="small">' + (x.ok ? (x.multi ? (x.latest ? tag('ฉบับล่าสุด (ใช้งาน)', 'ok') : tag('ฉบับเก่า → ประวัติ')) : x.has ? tag('แทนไฟล์เดิม', 'warn') : tag('ใหม่', 'ok')) : '<span class="badc">' + esc(x.why) + '</span>') + '</td></tr>';
+      }).join('') + '</tbody></table></div>',
+    ok: 'อัปโหลด ' + N(good) + ' ไฟล์',
+    onOk: function () {
+      [].forEach.call(document.querySelectorAll('.bkS'), function (x) { var it = list[Number(x.getAttribute('data-i'))]; it.startNew = x.value; });
+      setTimeout(bulkRun, 100);
+    } });
+}
+function bulkRun() {
+  var list = (S.cache.bulk || []).filter(function (x) { return x.ok; }), i = 0, okN = 0, errs = [];
+  var bar = document.createElement('div'); bar.className = 'syncbar'; document.body.appendChild(bar);
+  function show() { bar.innerHTML = '<span class="spin"></span><div><b>อัปโหลดสัญญา</b><div class="small">' + N(i) + ' / ' + N(list.length) + ' ไฟล์ · อย่าปิดหน้านี้</div><div class="pbar"><i style="width:' + Math.round(i / list.length * 100) + '%"></i></div></div>'; }
+  function read(f) { return new Promise(function (res, rej) { var fr = new FileReader(); fr.onload = function () { res(String(fr.result).split(',')[1]); }; fr.onerror = function () { rej(new Error('อ่านไฟล์ไม่สำเร็จ')); }; fr.readAsDataURL(f); }); }
+  function next() {
+    show();
+    if (i >= list.length) {
+      bar.remove();
+      if (errs.length) UI.alert({ title: 'อัปโหลดเสร็จ ' + N(okN) + ' ไฟล์ · ไม่สำเร็จ ' + N(errs.length), tone: 'warn', icon: 'alert', body: note('warn', errs.map(esc).join('<br>')) });
+      else toast('อัปโหลดสัญญาเรียบร้อย ' + N(okN) + ' ไฟล์', 'ok', 8000);
+      return go('contracts');
+    }
+    var x = list[i];
+    read(x.f).then(function (b64) {
+      var data = { code: x.code, fileBase64: b64, fileName: x.f.name, fileMime: x.f.type || 'application/pdf', note: 'อัปโหลดหลายไฟล์ ' + today() };
+      var st = x.multi && !x.latest ? '' : (x.startNew || '');
+      if (st && st !== x.start) data.startDate = st;
+      return api('saveContract', { data: data }, { write: true });
+    }).then(function () { okN++; }, function (e) { errs.push(x.f.name + ': ' + e.message); })
+      .then(function () { i++; next(); });
+  }
+  next();
+}
 
 function editContract(code) {
   var D = S.cache.registry, d = D.doctors.filter(function (x) { return String(x.code) === String(code); })[0];
@@ -346,7 +450,11 @@ function editContract(code) {
       '<label class="fld"><span>ไฟล์สัญญา (PDF หรือรูปภาพ ไม่เกิน 8 MB)</span><input id="ctFile" type="file" accept=".pdf,image/*">' +
       '<div class="hint">' + (c.hasFile ? 'ไฟล์ปัจจุบัน: ' + esc(c.fileName) + ' · อัปโหลดใหม่จะเก็บไฟล์เดิมไว้ในโฟลเดอร์ประวัติ' : 'ยังไม่มีไฟล์ในระบบ') + '</div></label>' +
       '<label class="fld"><span>หมายเหตุ</span><textarea id="ctNote">' + esc(c.note) + '</textarea></label>' +
-      (c.flag ? '<label class="chk"><input type="checkbox" id="ctClear"><div><b>ตรวจแล้วเรียบร้อย</b><small>ลบข้อสังเกตนี้ออก</small></div></label>' : ''),
+      (c.flag ? '<label class="chk"><input type="checkbox" id="ctClear"><div><b>ตรวจแล้วเรียบร้อย</b><small>ลบข้อสังเกตนี้ออก</small></div></label>' : '') +
+      '<div class="btn-row" style="margin-top:6px;border-top:1px solid var(--line);padding-top:12px">' +
+        (d.hidden ? '<button type="button" class="btn sm" onclick="UI.closeTop();hideDoc(\'' + esc(code) + '\',false)">' + I('eye', 'sm') + 'กู้คืนรายชื่อ</button>'
+                  : '<button type="button" class="btn sm" onclick="UI.closeTop();hideDoc(\'' + esc(code) + '\',true)">' + I('eyeoff', 'sm') + 'ซ่อนรายชื่อ (ไม่ใช่แพทย์/ไม่ใช้แล้ว)</button>') +
+        '<button type="button" class="btn sm" onclick="UI.closeTop();setTimeout(function(){mergeDlg(\'' + esc(code) + '\')},200)">' + I('swap', 'sm') + 'รวมเข้ากับรายชื่อที่ถูกต้อง</button></div>',
     ok: 'บันทึก',
     onOk: function (el) {
       var p = { code: code, contractNo: mv('ctNo'), startDate: mv('ctStart'), signDate: mv('ctSign'), endDate: mv('ctEnd'),
@@ -431,7 +539,7 @@ function saveRights() {
 /* ═══════════════════════════════════════════════════════
    รหัสค่าธรรมเนียมแพทย์
    ═══════════════════════════════════════════════════════ */
-var GRP_NAMES = { DR: 'แพทย์ทั่วไป', ANC: 'ศูนย์สาขา/ฝากครรภ์', DN: 'ทันตกรรม', VTH: 'แพทย์แผนไทย', XRAY: 'รังสีวิทยา', WAIT: 'รอจัดกลุ่ม' };
+var GRP_NAMES = { DR: 'แพทย์ทั่วไป', ANC: 'ศูนย์สาขา/ฝากครรภ์', DN: 'ทันตกรรม', VTH: 'แพทย์แผนไทย (จัดหน่วยตามคลินิก)', TTH: 'แผนไทย รพ.', TTB: 'แผนไทย ศูนย์สาขา', TTP: 'แผนไทย ศูนย์บางพระ', XRAY: 'รังสีวิทยา', WAIT: 'รอจัดกลุ่ม' };
 var DF_ST = { active: 'ใช้งาน', pending: 'รอยืนยัน', off: 'ปิดใช้' };
 ROUTES.dfcodes = function () {
   header('รหัสค่าธรรมเนียม', 'รหัสที่ "รอยืนยัน" จะไม่ถูกนับจ่าย', '<button class="btn sm pri" onclick="saveDf()">' + I('check', 'sm') + 'บันทึกการเปลี่ยนแปลง</button>');
@@ -535,7 +643,9 @@ function quickRule(json) {
 var SET_GROUPS = [
   { t: 'แหล่งข้อมูลจากระบบโรงพยาบาล', i: 'link', keys: [['apiBase', 'ที่อยู่ API', 'text'], ['apiReport', 'ชื่อรายงาน', 'text'],
     ['apiToken', 'โทเคน (ถ้าฝ่ายไอทีล็อก API)', 'password'], ['nightlyBackDays', 'ดึงทับย้อนหลังทุกคืน (วัน)', 'number'],
-    ['visitApiUrl', 'ที่อยู่ API รายชื่อผู้รับบริการ (visit) — ใช้เทียบ "ผู้ป่วยที่มาแต่ไม่มี DF" · เว้นว่าง = ปิด', 'text'] ] },
+    ['visitApiUrl', 'ที่อยู่ API รายชื่อผู้รับบริการ (visit) — ใช้เทียบ "ผู้ป่วยที่มาแต่ไม่มี DF" · เว้นว่าง = ปิด', 'text'],
+    ['visitExcludeClinics', 'คลินิกที่ไม่ต้องเทียบ "มาตรวจแต่ไม่มี DF" (คั่นด้วย , เช่น คลินิกเด็กดี, WBOT)', 'text'],
+    ['rangeMaxDays', 'รายงานตามช่วงวันที่ เลือกได้ไม่เกิน (วัน)', 'number'] ] },
   { t: 'การเข้าใช้งานของแพทย์ผ่านระบบ HIS', i: 'user', keys: [['hisVerifyUrl', 'ที่อยู่ API ตรวจรหัสผู้ใช้ HIS (ต้องเป็น https)', 'text'],
     ['hisAutoCreate', 'สร้างบัญชีแพทย์ให้เองเมื่อ HIS ยืนยันตัวตนแล้ว', 'onoff'] ] },
   { t: 'การคิดค่าตอบแทน ⚠ กระทบเงิน', i: 'baht', keys: [['sharePct', 'สัดส่วนส่วนแพทย์ (0.8 = 80%)', 'text'], ['baseField', 'ฐานคิดค่าตอบแทน', 'text'],
@@ -608,14 +718,15 @@ ROUTES.users = function () {
   load('listUsers', {}, function (D) {
     S.cache.users = D;
     V(note('info', '<b>ผู้ดูแลระบบ</b> ทำได้ทุกอย่าง · <b>ทรัพยากรบุคคล</b> ตัดรอบ ออกเอกสาร แก้ทะเบียน · <b>บัญชี</b> บันทึกผลเรียกเก็บและตัดหนี้เสีย · ' +
-      '<b>หัวหน้าฝ่าย</b> ดูเฉพาะแพทย์ในฝ่าย · <b>แพทย์</b> ดูเฉพาะยอดของตนเอง') + card('รายชื่อผู้ใช้', '<div id="tUsers"></div>', { icon: 'users', flush: true }));
+      '<b>หัวหน้าฝ่าย</b> ดูเฉพาะแพทย์ในฝ่าย · <b>แพทย์</b> ดูเฉพาะยอดของตนเอง · <b>เจ้าหน้าที่ทำเบิกแพทย์แผนไทย</b> เห็นเฉพาะหมวดแพทย์แผนไทยของหน่วยที่ได้รับมอบหมาย') + card('รายชื่อผู้ใช้', '<div id="tUsers"></div>', { icon: 'users', flush: true }));
     TBL.make('tUsers', { key: 'tUsers', rows: D.rows, idOf: function (u) { return u.empCode; },
       search: { placeholder: 'รหัส · ชื่อ · ฝ่าย', keys: ['empCode', 'name', 'dct', 'dept', 'roleTh'] },
       filters: [{ type: 'select', k: 'roleTh', label: 'บทบาท' }],
       chips: [{ id: 'lock', label: 'ถูกล็อก/ปิดใช้', tone: 'bad', fn: function (u) { return u.locked || u.active === 'N'; } }, { id: 'must', label: 'ต้องตั้งรหัสใหม่', fn: function (u) { return u.mustChange; } }],
       onRow: function (u) { editUser(u.empCode); },
       cols: [{ k: 'empCode', label: 'รหัสผู้ใช้', type: 'code' }, { k: 'name', label: 'ชื่อ - สกุล', render: function (u) { return '<b>' + esc(u.name || '—') + '</b>'; } },
-             { k: 'roleTh', label: 'บทบาท', cls: 'small' }, { k: 'dct', label: 'รหัสแพทย์', type: 'code' }, { k: 'dept', label: 'ฝ่าย', cls: 'small' },
+             { k: 'roleTh', label: 'บทบาท', cls: 'small', render: function (u) { return esc(u.roleTh) + (u.units && u.units.length ? '<span class="sub">หน่วยแผนไทย: ' + esc(u.units.join(', ')) + '</span>' : ''); } },
+             { k: 'dct', label: 'รหัสแพทย์', type: 'code' }, { k: 'dept', label: 'ฝ่าย', cls: 'small' },
              { k: 'st', label: 'สถานะ', get: function (u) { return u.active === 'N' ? 'ปิดใช้' : u.locked ? 'ถูกล็อก' : u.mustChange ? 'ต้องตั้งรหัสใหม่' : 'ใช้งานได้'; },
                render: function (u) { return u.active === 'N' ? tag('ปิดใช้', 'bad') : u.locked ? tag('ถูกล็อก', 'bad') : u.mustChange ? tag('ต้องตั้งรหัสใหม่', 'warn') : tag('ใช้งานได้', 'ok'); } },
              { k: 'lastLogin', label: 'เข้าใช้ล่าสุด', cls: 'small muted' },
@@ -624,35 +735,62 @@ ROUTES.users = function () {
 };
 function editUser(code) {
   var D = S.cache.users, u = code ? D.rows.filter(function (x) { return String(x.empCode) === String(code); })[0] : null;
+  var units = (u && u.units) || [];
   UI.dialog({ title: u ? 'แก้ไขผู้ใช้ ' + code : 'เพิ่มผู้ใช้ใหม่', icon: 'user',
+    sub: u ? 'แก้ชื่อ/ตำแหน่งได้โดยผู้ใช้ไม่ต้องเข้าระบบใหม่ · เปลี่ยนบทบาท/ฝ่าย/หน่วย/ปิดใช้ ผู้ใช้ท่านนั้นต้องเข้าระบบใหม่ (ความปลอดภัย)' : '',
     body: '<div class="frow"><label class="fld"><span>รหัสพนักงาน / รหัสผู้ใช้</span><input id="uCode" value="' + esc(u ? u.empCode : '') + '"' + (u ? ' readonly' : '') + '></label>' +
       '<label class="fld"><span>ชื่อ - สกุล</span><input id="uName" value="' + esc(u ? u.name : '') + '"></label></div>' +
       '<label class="fld"><span>ตำแหน่ง</span><input id="uTitle" value="' + esc(u ? u.title : '') + '"></label>' +
       '<div class="fld"><span>บทบาท (เลือกได้มากกว่าหนึ่ง)</span>' + D.roles.map(function (r) {
-        return '<label class="chk"><input type="checkbox" class="uRole" value="' + r.code + '"' + (u && u.roles.indexOf(r.code) >= 0 ? ' checked' : '') + '><div><b>' + esc(r.name) + '</b></div></label>'; }).join('') + '</div>' +
+        return '<label class="chk"><input type="checkbox" class="uRole" value="' + r.code + '"' + (u && u.roles.indexOf(r.code) >= 0 ? ' checked' : '') + ' onchange="uRoleTog()"><div><b>' + esc(r.name) + '</b>' +
+          (r.code === 'ttm' ? '<small>เห็นเฉพาะหมวดแพทย์แผนไทยของหน่วยที่เลือก ไม่เห็น DF แพทย์ทั่วไป/สูติ</small>' : '') + '</div></label>'; }).join('') + '</div>' +
+      '<div class="fld" id="uUnitsBox" style="display:none"><span>หน่วยแพทย์แผนไทยที่ดูแล (ไม่เลือก = ทุกหน่วย)</span><div class="btn-row">' + (D.ttmGroups || []).map(function (g) {
+        return '<label class="chk" style="margin:0"><input type="checkbox" class="uUnit" value="' + g.code + '"' + (units.indexOf(g.code) >= 0 ? ' checked' : '') + '><div><b>' + esc(g.name) + '</b></div></label>'; }).join('') + '</div></div>' +
       '<div class="frow"><label class="fld"><span>ผูกรหัสแพทย์ (บทบาทแพทย์)</span><input id="uDct" value="' + esc(u ? u.dct : '') + '"></label>' +
       '<label class="fld"><span>ฝ่าย (หัวหน้าฝ่าย)</span><input id="uDept" value="' + esc(u ? u.dept : '') + '"></label></div>' +
       (u ? '<label class="fld"><span>สถานะ</span><select id="uActive"><option value="Y"' + (u.active !== 'N' ? ' selected' : '') + '>ใช้งานได้</option><option value="N"' + (u.active === 'N' ? ' selected' : '') + '>ปิดใช้</option></select></label>'
          : '<label class="fld"><span>รหัสผ่านเริ่มต้น (ผู้ใช้ต้องเปลี่ยนเมื่อเข้าครั้งแรก)</span><input id="uPass"></label>'),
     ok: 'บันทึก',
+    onOpen: function () { uRoleTog(); },
     onOk: function (el) {
       var roles = [].map.call(document.querySelectorAll('.uRole:checked'), function (x) { return x.value; });
       if (!roles.length) return dlgErr(el, 'กรุณาเลือกบทบาทอย่างน้อยหนึ่งอย่าง');
-      var d = { empCode: mv('uCode'), name: mv('uName'), title: mv('uTitle'), roles: roles, dct: mv('uDct'), dept: mv('uDept') };
+      var d = { empCode: mv('uCode'), name: mv('uName'), title: mv('uTitle'), roles: roles, dct: mv('uDct'), dept: mv('uDept'),
+                units: roles.indexOf('ttm') >= 0 ? [].map.call(document.querySelectorAll('.uUnit:checked'), function (x) { return x.value; }) : [] };
       if (document.getElementById('uActive')) d.active = mv('uActive');
       if (document.getElementById('uPass')) d.pass = mv('uPass');
       if (roles.indexOf('doctor') >= 0 && !d.dct) return dlgErr(el, 'บทบาทแพทย์ต้องผูกรหัสแพทย์ ไม่งั้นระบบไม่รู้ว่าจะแสดงยอดของใคร');
       return api('saveUser', { data: d }, { write: true }).then(function (r) {
-        toast('บันทึกแล้ว' + (r && r.pass ? ' · รหัสผ่านเริ่มต้น: ' + r.pass : ''), 'ok', 12000); go('users');
+        /* รุ่น 16.1 — แก้บัญชีของตัวเอง หลังบ้านคืนโทเคนใหม่ → เก็บไว้ ไม่เด้งออก */
+        if (r && r.token) { setToken(r.token); api('me').then(function (m) { S.me = m; drawNav(); }).catch(function () { }); }
+        toast('บันทึกแล้ว' + (r && r.pass ? ' · รหัสผ่านเริ่มต้น: ' + r.pass : '') + (r && r.revoked && !r.token ? ' · ผู้ใช้ท่านนั้นต้องเข้าระบบใหม่' : ''), 'ok', 12000); go('users');
       });
     } });
 }
+function uRoleTog() {
+  var on = [].some.call(document.querySelectorAll('.uRole:checked'), function (x) { return x.value === 'ttm'; });
+  var b = document.getElementById('uUnitsBox'); if (b) b.style.display = on ? '' : 'none';
+}
+/** ตั้งรหัสผ่านใหม่ให้ผู้ใช้อื่น (รุ่น 16.1 ข้อ 2)
+ *  ช่องแรก = รหัสใหม่ของผู้ใช้ (เว้นว่าง = ใช้รหัสพนักงาน) · ช่องสอง = รหัสผ่านของแอดมินเพื่อยืนยัน
+ *  เดิมมีช่องเดียวซึ่งจริง ๆ คือรหัสยืนยันของแอดมิน ผู้ใช้เข้าใจผิดว่าเป็นรหัสใหม่ → ตั้งรหัสตัวเองแล้วเด้งออก */
 function resetPass(code) {
+  var self = S.me && String(S.me.user.empCode) === String(code);
   UI.dialog({ title: 'ตั้งรหัสผ่านใหม่ให้ ' + code, icon: 'key', tone: 'warn',
-    body: note('warn', 'ผู้ใช้จะต้องเปลี่ยนรหัสผ่านเองเมื่อเข้าใช้งานครั้งถัดไป · ระบบบันทึกไว้ว่าใครสั่งตั้งรหัสใหม่') +
-      '<label class="fld"><span>รหัสผ่านใหม่ (อย่างน้อย 8 ตัวอักษร)</span><input id="rpNew"></label>',
+    body: (self ? note('info', 'นี่คือบัญชีของท่านเอง — แนะนำใช้ปุ่ม "รหัสผ่าน" ที่มุมล่างซ้ายแทน') : '') +
+      note('warn', 'ผู้ใช้จะต้องเปลี่ยนรหัสผ่านเองเมื่อเข้าใช้งานครั้งถัดไป · ระบบบันทึกไว้ว่าใครสั่งตั้งรหัสใหม่') +
+      '<label class="fld"><span>รหัสผ่านใหม่ของผู้ใช้ ' + esc(code) + ' (เว้นว่าง = ใช้รหัสพนักงาน)</span><input id="rpNew" autocomplete="off"></label>' +
+      '<label class="fld"><span>รหัสผ่านของท่าน (ผู้ดูแลระบบ) เพื่อยืนยัน</span><input id="rpAdm" type="password" autocomplete="current-password"></label>',
     ok: 'ตั้งรหัสใหม่',
-    onOk: function () { return api('resetPass', { empCode: code, pass: mv('rpNew') }, { write: true }).then(function () { toast('ตั้งรหัสผ่านใหม่เรียบร้อย', 'ok'); go('users'); }); } });
+    onOk: function (el) {
+      var np = mv('rpNew'), ap = document.getElementById('rpAdm').value;
+      if (!ap) return dlgErr(el, 'กรุณากรอกรหัสผ่านของท่านเพื่อยืนยัน');
+      if (np && np.length < 6) return dlgErr(el, 'รหัสผ่านใหม่ต้องยาวอย่างน้อย 6 ตัวอักษร');
+      return api('resetPass', { empCode: code, pass: ap, newPass: np }, { write: true }).then(function (r) {
+        if (r && r.token) setToken(r.token);
+        UI.alert({ title: 'ตั้งรหัสผ่านใหม่เรียบร้อย', icon: 'check', tone: 'ok', body: '<p>' + esc(r && r.note ? r.note : '') + '</p>' }).then(function () { if (r && r.self) start().catch(bootFail); else go('users'); });
+      });
+    } });
 }
 
 /* ═══════════════════════════════════════════════════════

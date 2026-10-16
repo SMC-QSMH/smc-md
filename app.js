@@ -1,4 +1,6 @@
-/* SMC MD — app.js (รุ่น 2569-10-15.1)
+/* SMC MD — app.js (รุ่น 2569-10-16.1)
+ * รุ่น 16.1: เมนูจัดกลุ่มพับได้ + ย่อแถบข้าง (จำค่าไว้) · ไม่เด้งออกเมื่อแก้ผู้ใช้/เปลี่ยนรหัส (เก็บโทเคนใหม่)
+ *           · ป๊อปอัปแจ้งรายการเรียกคืน · การ์ดพับได้ · บทบาทเจ้าหน้าที่แพทย์แผนไทย
  * แกนหน้าเว็บ: เรียกหลังบ้าน (พร้อมแคชในเครื่อง) · ป๊อปอัป/แผงข้าง/ข้อความเด้งที่วาดเอง
  * · ล็อกอิน · เมนู · เส้นทางหน้า · ตัวช่วยแสดงผล
  *
@@ -50,7 +52,9 @@ function api(action, payload, opt) {
     busy(false);
     if (o.mustChange) { showChangePass(true); throw new Error('กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน'); }
     if (!o.ok) {
-      if (/^AUTH:|โทเคน|หมดเวลาใช้งาน|เข้าสู่ระบบใหม่/.test(o.error || '')) logout(true);
+      /* รุ่น 16.1 — ออกจากระบบเฉพาะเมื่อหลังบ้านบอกว่าโทเคนใช้ไม่ได้จริง (ขึ้นต้น AUTH:) เท่านั้น
+         เดิมจับคำว่า "เข้าสู่ระบบใหม่" ในข้อความใดก็ได้ → ข้อความผิดพลาดอื่นทำให้เด้งออก */
+      if (/^AUTH:/.test(o.error || '') && action !== 'login' && action !== 'changePass') logout(true);
       throw new Error(String(o.error || 'เกิดข้อผิดพลาดที่ไม่ทราบสาเหตุ').replace(/^(AUTH|FORBIDDEN):\s*/, ''));
     }
     if (o.build && CFG.BUILD && o.build !== CFG.BUILD) warnBuild(o.build);
@@ -109,6 +113,7 @@ function load(action, payload, render, opt) {
   }).catch(function (e) {
     if (my !== S.seq) return;
     if (hit) toast('อัปเดตข้อมูลล่าสุดไม่สำเร็จ — กำลังแสดงข้อมูลที่เปิดไว้ก่อนหน้า · ' + e.message, 'warn', 8000);
+    else if (opt.errTo && document.getElementById(opt.errTo)) document.getElementById(opt.errTo).innerHTML = note('bad', esc(e.message || e));
     else showErr(e);
   });
 }
@@ -190,8 +195,10 @@ function fiscalOf(ym) { var p = String(ym).split('-'); return Number(p[0]) + 543
 
 var STATUS_CLASS = {
   'จ่ายแล้ว': 'ok', 'จ่ายบางส่วน': 'warn', 'ค้างจ่าย': 'warn', 'ระงับโดยผู้จัดการ': 'bad',
-  'ไม่เบิก': '', 'หนี้เสีย': 'bad', 'หนี้ศูนย์': '', 'รอจัดกลุ่ม': 'bad'
+  'ไม่เบิก': '', 'หนี้เสีย': 'bad', 'หนี้ศูนย์': '', 'รอจัดกลุ่ม': 'bad',
+  'ระงับ · เข้ารายได้คลินิก': 'brand', 'ไม่พบเวร': 'bad'
 };
+var ST_CLINIC = 'ระงับ · เข้ารายได้คลินิก', ST_NOSHIFT = 'ไม่พบเวร';   /* ต้องตรงกับ PAY_STATUS.CLINIC / NOSHIFT ใน Config.gs */
 /* ต้องตรงกับ PAY_STATUS ใน Config.gs ทุกตัวอักษร */
 var PAY_STATUS_LIST = ['จ่ายแล้ว', 'จ่ายบางส่วน', 'ค้างจ่าย', 'ระงับโดยผู้จัดการ', 'ไม่เบิก'];
 var CASE_RESET = 'คืนตามที่ระบบคำนวณ';
@@ -210,8 +217,24 @@ function kpi(lbl, val, sub, cls, icon, onclick) {
     '<div class="l">' + (icon ? I(icon, 'sm') : '') + esc(lbl) + '</div>' +
     '<div class="v">' + val + '</div>' + (sub ? '<div class="d">' + sub + '</div>' : '') + '</div>';
 }
+/* การ์ดพับได้ (รุ่น 16.1 ข้อ 7) — opt.fold = รหัสการ์ด · จำว่าพับ/กางไว้ในเครื่องนี้ */
+function foldOpen(id, dflt) {
+  try { var v = localStorage.getItem('smcmd_fold_' + id); if (v === '0') return false; if (v === '1') return true; } catch (e) { }
+  return dflt !== false;
+}
+function foldSave(el) {
+  try { localStorage.setItem('smcmd_fold_' + el.getAttribute('data-fold'), el.open ? '1' : '0'); } catch (e) { }
+  if (el.open && window.CH && CH.redrawAll) setTimeout(function () { CH.redrawAll(); }, 30);
+}
 function card(title, body, opt) {
   opt = opt || {};
+  if (opt.fold && title) {
+    var op = foldOpen(opt.fold, opt.open);
+    return '<details class="card fold' + (opt.cls ? ' ' + opt.cls : '') + '"' + (opt.id ? ' id="' + opt.id + '"' : '') + ' data-fold="' + esc(opt.fold) + '"' +
+      (op ? ' open' : '') + ' ontoggle="foldSave(this)"><summary class="card-h" onclick="if(event.target.closest(\'button,select,input\'))event.preventDefault()"><div class="t">' + (opt.icon ? I(opt.icon) : '') + '<div><h3>' + title + '</h3>' +
+      (opt.sub ? '<div class="s">' + opt.sub + '</div>' : '') + '</div></div>' + (opt.acts || '') + '<span class="fold-ar">' + I('right', 'sm') + '</span></summary>' +
+      (opt.raw ? body : '<div class="card-b' + (opt.flush ? ' flush' : '') + '">' + body + '</div>') + '</details>';
+  }
   return '<section class="card' + (opt.cls ? ' ' + opt.cls : '') + '"' + (opt.id ? ' id="' + opt.id + '"' : '') + '>' +
     (title ? '<div class="card-h"><div class="t">' + (opt.icon ? I(opt.icon) : '') + '<div><h3>' + title + '</h3>' +
       (opt.sub ? '<div class="s">' + opt.sub + '</div>' : '') + '</div></div>' + (opt.acts || '') + '</div>' : '') +
@@ -410,6 +433,18 @@ function toast(msg, kind, ms) {
   setTimeout(gone, ms || 4500);
 }
 
+/* ═══════════════ สั่งพิมพ์เอกสารเฉพาะส่วน (รุ่น 16.1) ═══════════════
+ * ใช้กับรายงานที่ต้องตรวจสอบ / รายงานแพทย์แผนไทย — พิมพ์ได้ทุกอุปกรณ์ (มือถือ = บันทึกเป็น PDF) */
+function printSheet(html, landscape) {
+  var a = document.getElementById('printArea');
+  if (!a) { a = document.createElement('div'); a.id = 'printArea'; document.body.appendChild(a); }
+  a.innerHTML = '<style>@page{size:A4 ' + (landscape ? 'landscape' : 'portrait') + ';margin:10mm}</style><div class="pr">' + html + '</div>';
+  document.body.classList.add('print-mode');
+  var done = function () { document.body.classList.remove('print-mode'); window.removeEventListener('afterprint', done); };
+  window.addEventListener('afterprint', done);
+  setTimeout(function () { window.print(); setTimeout(function () { if (!window.matchMedia || !window.matchMedia('print').matches) done(); }, 1500); }, 80);
+}
+
 /* ═══════════════ โหมดสี ═══════════════ */
 function isDark() {
   var t = document.documentElement.getAttribute('data-theme');
@@ -456,6 +491,11 @@ function loginError(msg) {
   box.classList.toggle('hidden', !msg);
   if (msg) box.querySelector('span').textContent = msg;
 }
+function setToken(t) {
+  if (!t) return;
+  S.token = t;
+  try { localStorage.setItem('smcmd_tk', t); localStorage.setItem('smcmd_at', String(Date.now())); } catch (e) { }
+}
 function doLogin() {
   var code = mv('empCode'), pass = document.getElementById('pass').value;
   if (!code || !pass) return loginError('กรุณากรอกรหัสผู้ใช้และรหัสผ่าน');
@@ -464,8 +504,8 @@ function doLogin() {
   btn.disabled = true; btn.innerHTML = '<span class="spin"></span> กำลังตรวจสอบ';
   api('login', { empCode: code, pass: pass, agent: loginMode, his: loginMode === 'doctor' })
     .then(function (d) {
-      S.token = d.token;
-      try { localStorage.setItem('smcmd_tk', d.token); localStorage.setItem('smcmd_at', String(Date.now())); } catch (e) { }
+      setToken(d.token);
+      S.recallShown = false;
       return start();
     })
     .catch(function (e) {
@@ -507,9 +547,11 @@ function showChangePass(forced) {
       if (n.length < 8) return dlgErr(el, 'รหัสผ่านใหม่ต้องยาวอย่างน้อย 8 ตัวอักษร');
       if (n !== n2) return dlgErr(el, 'รหัสผ่านใหม่ทั้งสองช่องไม่ตรงกัน');
       if (n === o) return dlgErr(el, 'รหัสผ่านใหม่ต้องไม่ซ้ำกับรหัสผ่านเดิม');
-      return api('changePass', { oldPass: o, newPass: n }, { write: true }).then(function () {
+      /* รุ่น 16.1 — หลังบ้านคืนโทเคนใหม่ (โทเคนเดิมใช้ไม่ได้แล้ว) ต้องเก็บไว้ ไม่งั้นคำสั่งถัดไปเด้งออก */
+      return api('changePass', { oldPass: o, newPass: n }, { write: true }).then(function (r) {
+        if (r && r.token) setToken(r.token);
         toast('เปลี่ยนรหัสผ่านเรียบร้อย', 'ok');
-        setTimeout(start, 50);
+        setTimeout(function () { start().catch(bootFail); }, 50);
       });
     }
   });
@@ -521,55 +563,107 @@ function isAdmin() { return has('admin'); }
 function isHr()    { return has('hr') || has('admin'); }
 function isAcct()  { return has('account') || has('admin'); }
 function isStaff() { return isHr() || isAcct() || has('head'); }
+/** เจ้าหน้าที่ทำเบิกแพทย์แผนไทย (รุ่น 16.1) — เห็นเฉพาะหมวดแพทย์แผนไทย ไม่เห็น DF แพทย์ทั่วไป/สูติ */
+function isTtm()   { return has('ttm'); }
+function canTtm()  { return isTtm() || isHr(); }
 
+/* รุ่น 16.1 ข้อ 3 — จัดเมนูเป็นหมวด พับ/กางได้ (จำไว้ในเครื่อง) */
 function menu() {
   var n = S.me.notice || {};
   var m = [];
   if (has('doctor')) {
-    m.push({ g: 'ของฉัน' });
+    m.push({ g: 'ของฉัน', id: 'me' });
     m.push({ p: 'my', ic: 'baht', t: 'ยอดค่าตอบแทนของฉัน' });
     m.push({ p: 'myPending', ic: 'clock', t: 'ยอดค้างจ่ายของฉัน' });
     m.push({ p: 'myProfile', ic: 'user', t: 'ประวัติและสัญญาของฉัน' });
   }
   if (isStaff()) {
-    m.push({ g: 'ภาพรวม' });
+    m.push({ g: 'ภาพรวม', id: 'ov' });
     m.push({ p: 'dash', ic: 'dash', t: 'แดชบอร์ด' });
-    m.push({ p: 'day', ic: 'calendar', t: 'ตรวจรายวัน', badge: n.waitGroup || 0, bad: true });
     m.push({ p: 'month', ic: 'month', t: 'สรุปรายเดือน' });
-    m.push({ g: 'การเงิน' });
+    m.push({ p: 'range', ic: 'calendar', t: 'รายงานตามช่วงวันที่' });
+    m.push({ g: 'ตรวจสอบประจำวัน', id: 'chk' });
+    m.push({ p: 'day', ic: 'calendar', t: 'ตรวจรายวัน', badge: n.waitGroup || 0, bad: true });
+    m.push({ p: 'audit', ic: 'alert', t: 'รายงานที่ต้องตรวจสอบ' });
+    m.push({ p: 'hn', ic: 'search', t: 'ค้นหาจาก HN' });
+    m.push({ p: 'reassign', ic: 'swap', t: 'DF ลงชื่อผิดคน' });
+    m.push({ g: 'การเงินติดตาม', id: 'fin' });
     m.push({ p: 'pending', ic: 'clock', t: 'ติดตามยอดค้างจ่าย' });
     m.push({ p: 'writeoff', ic: 'slash', t: 'หนี้เสีย / หนี้ศูนย์' });
-    m.push({ p: 'backpay', ic: 'refresh', t: 'ตกเบิก / เรียกคืน' });
+    m.push({ p: 'backpay', ic: 'refresh', t: 'ตกเบิก / เรียกคืน', badge: n.backpayOpen || 0 });
+  } else if (isTtm()) {
+    m.push({ g: 'ตรวจสอบ', id: 'chk' });
+    m.push({ p: 'audit', ic: 'alert', t: 'รายงานที่ต้องตรวจสอบ' });
+    m.push({ p: 'hn', ic: 'search', t: 'ค้นหาจาก HN' });
+    m.push({ p: 'backpay', ic: 'refresh', t: 'ตกเบิก / เรียกคืน', badge: n.backpayOpen || 0 });
   }
   if (isHr()) {
-    m.push({ g: 'รอบเบิกและเอกสาร' });
+    m.push({ g: 'รอบเบิกและเอกสาร', id: 'close' });
     m.push({ p: 'close', ic: 'check', t: 'ตัดรอบและออกเอกสาร' });
     m.push({ p: 'import', ic: 'file', t: 'นำเข้าผลเบิกจาก Excel' });
     m.push({ p: 'docs', ic: 'printer', t: 'ใบแจ้งยอดรายคน' });
+  }
+  if (canTtm() || (isAcct() && !has('head'))) {
+    m.push({ g: 'แพทย์แผนไทย', id: 'ttm' });
+    m.push({ p: 'ttm', ic: 'leaf', t: 'รายงานแพทย์แผนไทย' });
+    m.push({ p: 'ttmItems', ic: 'list', t: 'รายการ DF และรอบเวร' });
+    m.push({ p: 'ttmShifts', ic: 'clock', t: 'ตารางเวรแพทย์แผนไทย' });
+    if (isHr()) m.push({ p: 'ttmSettings', ic: 'settings', t: 'ตั้งค่าแพทย์แผนไทย' });
+  }
+  if (isHr()) {
+    m.push({ g: 'ทะเบียน', id: 'reg' });
     m.push({ p: 'contracts', ic: 'file', t: 'ทะเบียนสัญญา 40(6)', badge: n.contractFlags || 0 });
   }
   if (isAdmin()) {
-    m.push({ g: 'ตั้งค่าการคิดเงิน' });
+    m.push({ g: 'ตั้งค่าและผู้ใช้', id: 'sys' });
     m.push({ p: 'rights', ic: 'scale', t: 'สิทธิการรักษา' });
     m.push({ p: 'dfcodes', ic: 'hash', t: 'รหัสค่าธรรมเนียม' });
     m.push({ p: 'groups', ic: 'shuffle', t: 'กฎจัดกลุ่มการเบิก' });
-    m.push({ g: 'ระบบ' });
     m.push({ p: 'settings', ic: 'settings', t: 'ตั้งค่าระบบ' });
     m.push({ p: 'users', ic: 'users', t: 'ผู้ใช้งาน' });
     m.push({ p: 'logs', ic: 'list', t: 'ประวัติการใช้งาน' });
   }
   return m;
 }
-function firstPage() { var m = menu(); for (var i = 0; i < m.length; i++) if (m[i].p) return m[i].p; return 'my'; }
+function firstPage() {
+  var m = menu();
+  if (isTtm() && !isStaff()) return 'ttm';
+  for (var i = 0; i < m.length; i++) if (m[i].p) return m[i].p;
+  return 'my';
+}
+function navState() { try { return JSON.parse(localStorage.getItem('smcmd_nav') || '{}') || {}; } catch (e) { return {}; } }
+function navToggle(id) {
+  var st = navState(); st[id] = !st[id];
+  try { localStorage.setItem('smcmd_nav', JSON.stringify(st)); } catch (e) { }
+  drawNav();
+}
 function drawNav() {
-  var html = '', m = menu();
+  var html = '', m = menu(), st = navState(), cur = null, groups = [];
   for (var i = 0; i < m.length; i++) {
-    var x = m[i];
-    if (x.g) { html += '<div class="grp">' + esc(x.g) + '</div>'; continue; }
-    html += '<a href="#' + x.p + '" data-p="' + x.p + '" class="' + (x.p === S.page ? 'on' : '') + '">' + I(x.ic) +
-      '<span>' + esc(x.t) + '</span>' + (x.badge ? '<span class="pill' + (x.bad ? ' bad' : '') + '">' + N(x.badge) + '</span>' : '') + '</a>';
+    if (m[i].g) { cur = { g: m[i], items: [] }; groups.push(cur); }
+    else if (cur) cur.items.push(m[i]); else { cur = { g: null, items: [m[i]] }; groups.push(cur); }
   }
+  groups.forEach(function (G) {
+    var hasOn = G.items.some(function (x) { return x.p === S.page; });
+    var shut = G.g && st[G.g.id] && !hasOn;            /* หมวดของหน้าที่เปิดอยู่กางเสมอ */
+    var badge = G.items.reduce(function (a, x) { return a + (x.badge || 0); }, 0);
+    if (G.g) html += '<button type="button" class="grp' + (shut ? ' shut' : '') + '" onclick="navToggle(\'' + G.g.id + '\')" aria-expanded="' + (!shut) + '">' +
+      '<span>' + esc(G.g.g) + '</span>' + (shut && badge ? '<span class="pill">' + N(badge) + '</span>' : '') + I('right', 'sm') + '</button>';
+    html += '<div class="grp-b' + (shut ? ' shut' : '') + '">';
+    G.items.forEach(function (x) {
+      html += '<a href="#' + x.p + '" data-p="' + x.p + '" title="' + esc(x.t) + '" class="' + (x.p === S.page ? 'on' : '') + '">' + I(x.ic) +
+        '<span>' + esc(x.t) + '</span>' + (x.badge ? '<span class="pill' + (x.bad ? ' bad' : '') + '">' + N(x.badge) + '</span>' : '') + '</a>';
+    });
+    html += '</div>';
+  });
   document.getElementById('nav').innerHTML = html;
+}
+/** ย่อ/ขยายแถบเมนูด้านซ้าย (จอคอม) — ให้พื้นที่ตารางกว้างขึ้นบนจอ 1440 */
+function toggleMini() {
+  var on = !document.getElementById('app').classList.contains('mini');
+  document.getElementById('app').classList.toggle('mini', on);
+  try { localStorage.setItem('smcmd_mini', on ? '1' : '0'); } catch (e) { }
+  if (window.CH && CH.redrawAll) setTimeout(function () { CH.redrawAll(); }, 260);
 }
 function openSide(on) {
   var s = document.getElementById('side');
@@ -614,22 +708,51 @@ function start() {
     document.getElementById('app').classList.remove('hidden');
     bootDone();
     var u = d.user, nm = (u.title ? u.title + ' ' : '') + (u.name || u.empCode);
-    document.getElementById('meBox').innerHTML = '<div class="av">' + esc(String(u.name || u.empCode).replace(/^(นพ\.|พญ\.|นาย|นาง|นางสาว|ทพ\.|ทพญ\.)\s*/, '').charAt(0)) + '</div>' +
+    document.getElementById('meBox').innerHTML = '<div class="av">' + esc(String(u.name || u.empCode).replace(/^(นพ\.|พญ\.|นาย|นาง|นางสาว|ทพ\.|ทพญ\.|พท\.ป\.)\s*/, '').charAt(0)) + '</div>' +
       '<div class="who"><b>' + esc(nm) + '</b><small>' + esc(u.roleTh.join(' · ')) + '</small></div>';
     document.getElementById('verBox').textContent = 'รุ่น ' + CFG.BUILD;
     themeIcon();
     if (u.mustChange) { showChangePass(true); return; }
     var h = location.hash.slice(1).split(':');
     go(h[0] || firstPage(), h.slice(1).join(':'));
+    recallPopup();
   });
+}
+
+/** รุ่น 16.1 ข้อ 6.2 — มีรายการเรียกคืน (ยอดลดหลังปิดรอบ) ที่ยังไม่ตัดสิน → แจ้งฝ่ายบัญชีและ HR ทันทีที่เข้าระบบ (ครั้งเดียวต่อการเข้าใช้) */
+function recallPopup() {
+  var rc = (S.me.notice && S.me.notice.recall) || [];
+  if (!rc.length || S.recallShown || !(isHr() || isAcct() || isTtm())) return;
+  try { if (sessionStorage.getItem('smcmd_recall') === String(rc.length)) return; sessionStorage.setItem('smcmd_recall', String(rc.length)); } catch (e) { }
+  S.recallShown = true;
+  var sum = rc.reduce(function (a, r) { return a + Number(r.diff || 0); }, 0);
+  UI.dialog({ title: 'มีรายการเรียกคืน ' + N(rc.length) + ' รายการ', icon: 'alert', tone: 'bad', wide: true,
+    sub: 'ยอดในระบบโรงพยาบาลลดลงหลังปิดรอบ · รวม ' + B(sum) + ' บาท (ยอดรับรอง)',
+    body: note('warn', 'ฝ่ายบัญชีตรวจสาเหตุ (ยกเลิกใบเสร็จ/คืนเงินผู้ป่วย/แก้สิทธิ) · HR ตัดสินว่าจะ <b>หักคืนในรอบจ่ายถัดไป</b> หรือ <b>ไม่เรียกคืน</b> พร้อมเหตุผล ที่หน้า ตกเบิก / เรียกคืน') +
+      '<div class="tw"><table class="t compact"><thead><tr><th>รอบที่ปิด</th><th>แพทย์</th><th>วันที่</th><th>HN</th><th class="n">ส่วนต่าง</th></tr></thead><tbody>' +
+      rc.slice(0, 12).map(function (r) {
+        return '<tr><td>' + esc(r.ymClosedTh) + '</td><td>' + esc(r.dctName || r.dct) + '</td><td>' + (r.date ? dTh(r.date) : '—') + '</td><td class="mono">' + esc(r.hn || '—') +
+          '</td><td class="n badc">' + B(r.diff) + '</td></tr>';
+      }).join('') + '</tbody></table></div>' + (rc.length > 12 ? '<div class="small muted" style="margin-top:6px">และอีก ' + N(rc.length - 12) + ' รายการ</div>' : ''),
+    ok: 'ไปหน้าตกเบิก / เรียกคืน', cancel: 'ไว้ทีหลัง',
+    onOk: function () { setTimeout(function () { S.bpChip = 'down'; go('backpay'); }, 50); } });
+}
+
+/** เปิดระบบไม่สำเร็จ — โทเคนใช้ไม่ได้ → หน้าเข้าสู่ระบบ · เครือข่าย/หลังบ้านขัดข้อง → แจ้งให้ลองใหม่ (ไม่ล้างการเข้าระบบ) */
+function bootFail(e) {
+  if (!S.token) return;           /* api() ออกจากระบบให้แล้วกรณีโทเคนใช้ไม่ได้ */
+  showLogin();
+  loginError('เปิดระบบไม่สำเร็จ: ' + ((e && e.message) || e) + ' — กดรีเฟรชหน้า หรือเข้าสู่ระบบอีกครั้ง');
 }
 
 function boot() {
   initLogin();
   themeIcon();
+  try { if (localStorage.getItem('smcmd_mini') === '1') document.getElementById('app').classList.add('mini'); } catch (e) { }
   document.getElementById('btnOut').onclick = askLogout;
   document.getElementById('btnPass').onclick = function () { showChangePass(false); };
   document.getElementById('btnTheme').onclick = toggleTheme;
+  var mb = document.getElementById('btnMini'); if (mb) mb.onclick = toggleMini;
   document.getElementById('burger').onclick = function () { openSide(!document.getElementById('side').classList.contains('open')); };
   document.getElementById('nav').addEventListener('click', function (e) {
     var a = e.target.closest('a[data-p]');
@@ -649,6 +772,6 @@ function boot() {
   var maxAge = (CFG.TOKEN_HOURS || 8) * 3600 * 1000;
   if (tk && at && (Date.now() - at) < maxAge) {
     S.token = tk;
-    start().catch(function () { logout(true); });
+    start().catch(bootFail);
   } else showLogin();
 }

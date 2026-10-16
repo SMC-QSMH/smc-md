@@ -30,6 +30,12 @@ var TBL = (function () {
     var st = saved[key] || { q: '', f: {}, chip: o.chip || '', sort: o.sort || null, page: 0 };
     if (o.reset) st = { q: '', f: {}, chip: o.chip || '', sort: o.sort || null, page: 0 };
     if (o.initial) { if (o.initial.chip !== undefined) st.chip = o.initial.chip; if (o.initial.f) for (var ik in o.initial.f) st.f[ik] = o.initial.f[ik]; if (o.initial.q !== undefined) st.q = o.initial.q; }
+    /* รุ่น 16.1 ข้อ 16 — ลำดับการเรียงที่ผู้ใช้เลือกไว้ (เช่น ฝ่าย → รหัส) จำไว้ในเครื่องต่อตาราง */
+    if (o.orders && o.orders.length && !st.order) {
+      var so = ''; try { so = localStorage.getItem('smcmd_ord_' + key) || ''; } catch (e) { }
+      st.order = o.orders.some(function (x) { return x.id === so; }) ? so : o.orders[0].id;
+      if (!o.sort) st.sort = null;
+    }
     saved[key] = st;
     var T = { o: o, el: el, st: st, key: key, rows: o.rows || [], view: [], sel: {} };
     reg[key] = T;
@@ -52,7 +58,7 @@ var TBL = (function () {
     });
 
     var h = '';
-    if (o.search || (o.filters && o.filters.length) || o.exportName) {
+    if (o.search || (o.filters && o.filters.length) || o.exportName || o.orders) {
       h += '<div class="ftb">';
       if (o.search) h += '<label class="fld search"><span>ค้นหา</span>' + I('search', 'sm') +
         '<input type="search" data-q placeholder="' + esc(o.search.placeholder || 'พิมพ์คำค้น') + '" value="' + esc(st.q) + '"></label>';
@@ -69,13 +75,16 @@ var TBL = (function () {
           h += '<label class="fld" style="max-width:150px"><span>' + esc(f.label) + '</span><input type="number" inputmode="decimal" data-f="' + i + '" placeholder="0" value="' + esc(cur.v || '') + '"></label>';
         }
       });
+      if (o.orders && o.orders.length) h += '<label class="fld" style="max-width:190px"><span>เรียงตาม</span><select data-ord>' +
+        o.orders.map(function (x) { return '<option value="' + esc(x.id) + '"' + (st.order === x.id && !st.sort ? ' selected' : '') + '>' + esc(x.label) + '</option>'; }).join('') +
+        (st.sort ? '<option value="" selected>ตามหัวตารางที่กด</option>' : '') + '</select></label>';
       h += '<div class="grow"></div><div class="btn-row">' +
         '<button class="btn sm ghost" data-clear title="ล้างตัวกรองทั้งหมด">' + I('x', 'sm') + 'ล้างตัวกรอง</button>' +
         (o.exportName ? '<button class="btn sm" data-export>' + I('download', 'sm') + 'Excel</button>' : '') +
         (o.actions || '') + '</div></div>';
     }
     if (o.chips && o.chips.length) h += '<div class="chips" data-chips></div>';
-    h += '<div class="tw' + (o.tall ? ' tall' : '') + '"><table class="t' + (o.compact ? ' compact' : '') + '"><thead><tr>' +
+    h += '<div class="tw' + (o.tall ? ' tall' : '') + '"><table class="t' + (o.compact ? ' compact' : '') + (o.noCards ? '' : ' tc') + '"><thead><tr>' +
       (o.select ? '<th style="width:34px"><input type="checkbox" data-all style="width:16px;height:16px;accent-color:var(--brand)"></th>' : '') +
       o.cols.map(function (c, i) {
         var s = c.sort !== false;
@@ -96,6 +105,14 @@ var TBL = (function () {
         st.page = 0; apply(T);
       });
     });
+    var od = el.querySelector('[data-ord]');
+    if (od) od.addEventListener('change', function () {
+      if (!od.value) return;
+      st.order = od.value; st.sort = null; st.page = 0;
+      try { localStorage.setItem('smcmd_ord_' + key, st.order); } catch (e) { }
+      var b = od.querySelector('option[value=""]'); if (b) b.remove();
+      apply(T);
+    });
     var cl = el.querySelector('[data-clear]');
     if (cl) cl.onclick = function () { st.q = ''; st.f = {}; st.chip = ''; st.page = 0; make(el, Object.assign({}, o, { reset: true, chip: '' })); };
     var ex = el.querySelector('[data-export]');
@@ -104,6 +121,9 @@ var TBL = (function () {
       th.onclick = function () {
         var i = Number(th.getAttribute('data-c'));
         st.sort = (st.sort && st.sort.i === i) ? { i: i, d: -st.sort.d } : { i: i, d: isNum(o.cols[i]) ? -1 : 1 };
+        var od2 = el.querySelector('[data-ord]');
+        if (od2 && !od2.querySelector('option[value=""]')) od2.insertAdjacentHTML('beforeend', '<option value="">ตามหัวตารางที่กด</option>');
+        if (od2) od2.value = '';
         apply(T);
       };
     });
@@ -162,6 +182,9 @@ var TBL = (function () {
         if (num) return ((Number(x) || 0) - (Number(y) || 0)) * d;
         return String(x === undefined || x === null ? '' : x).localeCompare(String(y === undefined || y === null ? '' : y), 'th') * d;
       });
+    } else if (o.orders && st.order) {
+      var oc = o.orders.filter(function (x) { return x.id === st.order; })[0];
+      if (oc && oc.cmp) T.view = T.view.slice().sort(oc.cmp);
     }
     /* ปุ่มกรองลัด พร้อมจำนวนตามตัวกรองอื่นที่ใช้อยู่ */
     var chipsEl = T.el.querySelector('[data-chips]');
@@ -197,7 +220,7 @@ var TBL = (function () {
         (o.select ? '<td><input type="checkbox" data-sel="' + esc(id) + '"' + (T.sel[id] ? ' checked' : '') +
           (o.canSelect && !o.canSelect(r) ? ' disabled' : '') + ' style="width:16px;height:16px;accent-color:var(--brand)"></td>' : '') +
         o.cols.map(function (c) {
-          return '<td class="' + (isNum(c) ? 'n ' : '') + (c.cls || '') + (c.first ? ' first' : '') + '">' + fmt(c, r) + '</td>';
+          return '<td class="' + (isNum(c) ? 'n ' : '') + (c.cls || '') + (c.first ? ' first' : '') + '" data-label="' + esc(c.label || '') + '">' + fmt(c, r) + '</td>';
         }).join('') + '</tr>';
     }).join('');
     var colspan = o.cols.length + (o.select ? 1 : 0);
@@ -211,7 +234,7 @@ var TBL = (function () {
       tf.innerHTML = '<tr>' + (o.select ? '<td></td>' : '') + o.cols.map(function (c) {
         if (c.sum) {
           var s = T.view.reduce(function (a, r) { return a + (Number(val(c, r)) || 0); }, 0);
-          return '<td class="n">' + (c.type === 'int' ? N(s) : B(s)) + '</td>';
+          return '<td class="n" data-label="รวม' + esc(c.label || '') + '">' + (c.type === 'int' ? N(s) : B(s)) + '</td>';
         }
         if (!firstDone) { firstDone = true; return '<td>รวม ' + N(T.view.length) + ' รายการ</td>'; }
         return '<td></td>';
@@ -273,6 +296,27 @@ var TBL = (function () {
 
   return { make: make, setChip: setChip, setFilter: setFilter, setRange: setRange, get: get, selected: function (k) { return reg[k] ? selected(reg[k]) : []; }, clearSel: clearSel };
 })();
+
+/* ═══════════ ลำดับการเรียงสำเร็จรูป (รุ่น 16.1 ข้อ 16) ═══════════
+ * ฝ่าย (ก–ฮ ตามตัวอักษรจริง) → รหัสเจ้าหน้าที่ · ตรงกับลำดับในไฟล์ HRMi (deptSort_ ในหลังบ้าน) */
+function cmpDept(kDept, kCode) {
+  kDept = kDept || 'dept'; kCode = kCode || 'dct';
+  return function (a, b) {
+    var c = String(a[kDept] || 'ฮฮฮ').localeCompare(String(b[kDept] || 'ฮฮฮ'), 'th');
+    if (c) return c;
+    var x = String(a[kCode] || ''), y = String(b[kCode] || '');
+    return x < y ? -1 : x > y ? 1 : 0;
+  };
+}
+function ordersFor(o) {
+  o = o || {};
+  var kD = o.dept || 'dept', kC = o.code || 'dct', kN = o.name || 'dctName', kA = o.amount || 'base';
+  var list = [{ id: 'dept', label: 'ฝ่าย → รหัส', cmp: cmpDept(kD, kC) },
+              { id: 'code', label: 'รหัสเจ้าหน้าที่', cmp: function (a, b) { var x = String(a[kC] || ''), y = String(b[kC] || ''); return x < y ? -1 : x > y ? 1 : 0; } },
+              { id: 'name', label: 'ชื่อ ก–ฮ', cmp: function (a, b) { return String(a[kN] || '').replace(/^(นพ\.|พญ\.|ทพ\.|ทพญ\.|พท\.ป\.)\s*/, '').localeCompare(String(b[kN] || '').replace(/^(นพ\.|พญ\.|ทพ\.|ทพญ\.|พท\.ป\.)\s*/, ''), 'th'); } }];
+  if (kA) list.push({ id: 'amt', label: 'ยอดมาก → น้อย', cmp: function (a, b) { return (Number(b[kA]) || 0) - (Number(a[kA]) || 0); } });
+  return list;
+}
 
 /* ═══════════════════════════ แถบแนวนอนแบบเบา ═══════════════════════════ */
 function hbars(list, o) {

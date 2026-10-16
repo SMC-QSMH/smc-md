@@ -40,7 +40,8 @@
       <ul>
         <li><svg class="i"><use href="#i-calendar"/></svg><span>ตรวจรายวันหน้างาน — เคสไหนคีย์แล้วไม่นับจ่าย เคสไหนยอดเปลี่ยนหรือหายไป</span></li>
         <li><svg class="i"><use href="#i-clock"/></svg><span>ติดตามยอดค้างจ่ายรายสิทธิ รายแพทย์ รายวัน พร้อมตัวกรองลัด</span></li>
-        <li><svg class="i"><use href="#i-file"/></svg><span>ปิดรอบ · รายงานขอเบิก · ไฟล์ HRMi R101 / R106 · ใบแจ้งยอดรายคน</span></li>
+        <li><svg class="i"><use href="#i-file"/></svg><span>ปิดรอบ · รายงานขอเบิก · ไฟล์ HRMi R101 / R106 / R121 / R123 · ใบแจ้งยอดรายคน</span></li>
+        <li><svg class="i"><use href="#i-leaf"/></svg><span>แพทย์แผนไทย — คิดรายรอบเวร เทียบ DF 80% กับประกันรายได้ตามชั่วโมงเวร</span></li>
       </ul>
     </div>
     <div class="org">โรงพยาบาลสมเด็จพระบรมราชเทวี ณ ศรีราชา สภากาชาดไทย<br>งานบริหารเงินเดือน ค่าจ้าง และค่าตอบแทน ฝ่ายทรัพยากรบุคคล</div>
@@ -89,6 +90,7 @@
   <div class="main">
     <header class="top">
       <button class="btn icon ghost burger" id="burger" aria-label="เมนู"><svg class="i"><use href="#i-menu"/></svg></button>
+      <button class="btn icon ghost btn-mini" id="btnMini" title="ย่อ/ขยายแถบเมนู" aria-label="ย่อ/ขยายแถบเมนู"><svg class="i"><use href="#i-sidebar"/></svg></button>
       <div class="grow"><h1 id="pgTitle">—</h1><div class="sub" id="pgSub"></div></div>
       <div class="acts" id="pgActs"></div>
       <button class="btn icon ghost" id="btnTheme" title="สลับโหมดสว่าง/มืด"><svg class="i"><use href="#i-moon"/></svg></button>
@@ -98,6 +100,7 @@
 </div>
 
 <div id="layer"></div>
+<div id="printArea"></div>
 <div class="toasts" id="toasts"></div>
 
 <!-- ไอคอน (วาดเอง ไม่โหลดจากภายนอก) -->
@@ -145,6 +148,10 @@
   <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></symbol>
   <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.5 19 2c1 2 2 4.2 2 8 0 5.5-4.8 10-10 10z"/><path d="M2 21c0-3 1.9-5.4 5.1-6C9.5 14.5 12 13 13 12"/></symbol>
+  <symbol id="i-sidebar" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M5.5 9h1M5.5 12h1M5.5 15h1"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M17.9 17.9A10.1 10.1 0 0 1 12 20C5 20 1 12 1 12a18.5 18.5 0 0 1 5.1-5.9M9.9 4.2A9.1 9.1 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.2 3.2M14.1 14.1a3 3 0 1 1-4.2-4.2M1 1l22 22"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
 </svg>
 
@@ -153,6 +160,8 @@
 <script src="ui.js"></script>
 <script src="pages.js"></script>
 <script src="pages-admin.js"></script>
+<script src="pages-ops.js"></script>
+<script src="pages-ttm.js"></script>
 <script>document.addEventListener('DOMContentLoaded', boot);</script>
 </body>
 </html>
