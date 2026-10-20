@@ -564,8 +564,9 @@ function isHr()    { return has('hr') || has('admin'); }
 function isAcct()  { return has('account') || has('admin'); }
 function isStaff() { return isHr() || isAcct() || has('head'); }
 /** เจ้าหน้าที่ทำเบิกแพทย์แผนไทย (รุ่น 16.1) — เห็นเฉพาะหมวดแพทย์แผนไทย ไม่เห็น DF แพทย์ทั่วไป/สูติ */
-function isTtm()   { return has('ttm'); }
-function canTtm()  { return isTtm() || isHr(); }
+function ttmOn()   { return !(S.me && S.me.ttmInMd === false); }   /* 20 ต.ค. 69 — แผนไทยแยกไป SMC TTM */
+function isTtm()   { return ttmOn() && has('ttm'); }
+function canTtm()  { return ttmOn() && (isTtm() || isHr()); }
 
 /* รุ่น 16.1 ข้อ 3 — จัดเมนูเป็นหมวด พับ/กางได้ (จำไว้ในเครื่อง) */
 function menu() {
@@ -603,7 +604,7 @@ function menu() {
     m.push({ p: 'import', ic: 'file', t: 'นำเข้าผลเบิกจาก Excel' });
     m.push({ p: 'docs', ic: 'printer', t: 'ใบแจ้งยอดรายคน' });
   }
-  if (canTtm() || (isAcct() && !has('head'))) {
+  if (ttmOn() && (canTtm() || (isAcct() && !has('head')))) {
     m.push({ g: 'แพทย์แผนไทย', id: 'ttm' });
     m.push({ p: 'ttm', ic: 'leaf', t: 'รายงานแพทย์แผนไทย' });
     m.push({ p: 'ttmItems', ic: 'list', t: 'รายการ DF และรอบเวร' });
