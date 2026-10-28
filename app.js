@@ -25,17 +25,91 @@ function busy(on) {
 }
 function rid_() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
 
+/* ═══════════════ รุ่น 28.1 — สถานะการทำงานแบบ SMC Duty ═══════════════
+ * ผู้ใช้ขอ: กดปุ่มไหนต้องมีสถานะ ไม่ให้รู้สึกว่าเว็บค้าง
+ *  · ปุ่มที่กด → หมุน + ปิดชั่วคราว จนคำสั่งที่ปุ่มนั้นเรียกเสร็จ (จับอัตโนมัติทุกปุ่ม ไม่ต้องแก้ทีละหน้า)
+ *  · คำสั่งบันทึก → ป้ายมุมจอ "กำลังบันทึก…" → "บันทึกแล้ว" / "บันทึกไม่สำเร็จ"
+ *  · เปิดหน้าที่เคยเปิด → แสดงของเดิมทันที + ป้าย "กำลังอัปเดตข้อมูลล่าสุด…"
+ *  · งานนาน (เกิน 6 วินาที) → ป้ายบอกว่ายังทำงานอยู่ อย่าปิดหน้า                                   */
+var FB = { btn: null, at: 0, save: 0, stale: 0, long: 0, saveT: null };
+document.addEventListener('click', function (e) {
+  var b = e.target && e.target.closest ? e.target.closest('button, .btn') : null;
+  if (b && !b.disabled && !b.closest('.nav, #nav, .dlg-x, .toast')) { FB.btn = b; FB.at = Date.now(); }
+}, true);
+/** ปุ่มที่เพิ่งกด (ภายใน 600 ms) — ใช้ผูกสถานะกับคำสั่งที่ปุ่มนั้นเรียก */
+function takeBtn_() {
+  var b = FB.btn;
+  if (!b || Date.now() - FB.at > 600 || !document.body.contains(b) || b.disabled || b.classList.contains('is-busy')) return null;
+  FB.btn = null;
+  return b;
+}
+function btnBusy(b, on, text) {
+  if (!b) return;
+  if (on) {
+    if (b.classList.contains('is-busy')) return;
+    b.dataset.fbHtml = b.innerHTML; b.dataset.fbDis = b.disabled ? '1' : '';
+    b.classList.add('is-busy'); b.disabled = true; b.setAttribute('aria-busy', 'true');
+    var w = b.offsetWidth; if (w) b.style.minWidth = w + 'px';   /* ปุ่มไม่หดกระตุก */
+    b.innerHTML = '<span class="spin"></span>' + (text ? ' ' + esc(text) : (b.textContent.trim().length > 2 ? ' ' + esc(b.textContent.trim()) : ''));
+  } else {
+    if (!b.classList.contains('is-busy')) return;
+    b.classList.remove('is-busy'); b.removeAttribute('aria-busy'); b.style.minWidth = '';
+    if (b.dataset.fbHtml !== undefined) b.innerHTML = b.dataset.fbHtml;
+    b.disabled = !!b.dataset.fbDis;
+  }
+}
+function chip_(id, cls, html) {
+  var el = document.getElementById(id);
+  if (!el) { el = document.createElement('div'); el.id = id; el.setAttribute('role', 'status'); el.setAttribute('aria-live', 'polite'); document.body.appendChild(el); }
+  el.className = 'fb-chip ' + cls; el.innerHTML = html;
+  return el;
+}
+function savingChip(d, ok) {
+  FB.save = Math.max(0, FB.save + d);
+  clearTimeout(FB.saveT);
+  if (FB.save > 0) { chip_('fbSave', 'show', '<span class="spin"></span> กำลังบันทึก' + (FB.save > 1 ? ' ' + FB.save + ' รายการ' : '') + '…'); return; }
+  if (ok === false) { chip_('fbSave', 'show bad', I('alert', 'sm') + ' บันทึกไม่สำเร็จ'); FB.saveT = setTimeout(function () { chip_('fbSave', '', ''); }, 4000); return; }
+  chip_('fbSave', 'show ok', I('check', 'sm') + ' บันทึกแล้ว');
+  FB.saveT = setTimeout(function () { chip_('fbSave', '', ''); }, 1800);
+}
+function staleChip(on) {
+  FB.stale = Math.max(0, FB.stale + (on ? 1 : -1));
+  chip_('fbStale', FB.stale > 0 ? 'show info top' : 'top', '<span class="spin"></span> กำลังอัปเดตข้อมูลล่าสุด…');
+}
+function longChip(on) {
+  FB.long = Math.max(0, FB.long + (on ? 1 : -1));
+  chip_('fbLong', FB.long > 0 ? 'show warn' : '', '<span class="spin"></span> ยังทำงานอยู่ · งานนี้อาจใช้เวลาถึง 1–2 นาที กรุณาอย่าปิดหน้านี้');
+}
+window.addEventListener('beforeunload', function (e) { if (FB.save > 0) { e.preventDefault(); e.returnValue = 'ระบบกำลังบันทึกข้อมูล'; return e.returnValue; } });
+
 /**
  * api — เรียกคำสั่งหลังบ้าน · คืน data เมื่อสำเร็จ · throw Error ข้อความไทยเมื่อไม่สำเร็จ
  * opt.write = คำสั่งที่บันทึกข้อมูล (ส่ง _rid กันบันทึกซ้ำ และล้างแคชในเครื่องเมื่อสำเร็จ)
  */
 function api(action, payload, opt) {
   opt = opt || {};
-  if (window.DEMO_API) return window.DEMO_API(action, payload || {}, opt).then(function (d) { if (opt.write) clearCache(); return d; });
+  if (window.DEMO_API) {
+    var dBtn = opt.btn || (opt.noBtn ? null : takeBtn_());
+    if (dBtn) btnBusy(dBtn, true, opt.btnText);
+    if (opt.write && !opt.noChip) savingChip(1);
+    var dEnd = function (ok) { if (dBtn) btnBusy(dBtn, false); if (opt.write && !opt.noChip) savingChip(-1, ok); };
+    return window.DEMO_API(action, payload || {}, opt).then(function (d) { dEnd(true); if (opt.write) clearCache(); return d; }, function (e) { dEnd(false); throw e; });
+  }
   if (!CFG.API_URL || CFG.API_URL.indexOf('PASTE_') === 0) {
     return Promise.reject(new Error('ยังไม่ได้ตั้งค่า API_URL ในไฟล์ config.js'));
   }
   busy(true);
+  /* รุ่น 28.1 — ผูกสถานะกับปุ่มที่กด + ป้ายบันทึก + ป้ายงานนาน */
+  var fbBtn = opt.btn || (opt.noBtn ? null : takeBtn_()), fbLong = false, fbDone = false;
+  if (fbBtn) btnBusy(fbBtn, true, opt.btnText);
+  if (opt.write && !opt.noChip) savingChip(1);
+  var fbT = setTimeout(function () { if (!fbDone) { fbLong = true; longChip(true); } }, opt.longAfter || 6000);
+  var fbEnd = function (ok) {
+    if (fbDone) return; fbDone = true; clearTimeout(fbT);
+    if (fbLong) longChip(false);
+    if (fbBtn) btnBusy(fbBtn, false);
+    if (opt.write && !opt.noChip) savingChip(-1, ok);
+  };
   var body = { action: action, payload: payload || {}, token: S.token };
   if (opt.write) body._rid = rid_();
   return fetch(CFG.API_URL, {
@@ -61,9 +135,11 @@ function api(action, payload, opt) {
     if (o.dataVer && S.dataVer && o.dataVer !== S.dataVer) clearCache();
     if (o.dataVer) S.dataVer = o.dataVer;
     if (opt.write) clearCache();
+    fbEnd(true);
     return o.data;
   }).catch(function (e) {
     busy(false);
+    fbEnd(false);
     if (e && e.name === 'TypeError') throw new Error('เชื่อมต่อเครือข่ายไม่ได้ กรุณาตรวจอินเทอร์เน็ตแล้วลองใหม่');
     throw e;
   });
@@ -100,17 +176,21 @@ function clearCache() {
 function load(action, payload, render, opt) {
   opt = opt || {};
   var my = ++S.seq, k = ckey(action, payload), hit = opt.fresh ? null : cacheGet(k);
-  if (hit) { try { render(hit.data, { cached: true, at: hit.at }); } catch (e) { showErr(e); } }
+  if (hit) { try { render(hit.data, { cached: true, at: hit.at }); } catch (e) { showErr(e); } staleChip(true); }
   else if (!opt.quiet) skeleton(opt.msg);
   var p = Object.assign({}, payload || {});
   if (opt.fresh) p.fresh = true;
-  return api(action, p).then(function (d) {
+  var stOff = hit ? function () { if (stOff.on) { stOff.on = false; staleChip(false); } } : function () { };
+  stOff.on = !!hit;
+  return api(action, p, { noBtn: !!hit && !opt.btn, btn: opt.btn }).then(function (d) {
+    stOff();
     if (my !== S.seq && !opt.keep) return;
     var same = hit && JSON.stringify(hit.data) === JSON.stringify(d);
     cachePut(k, d);
     if (!same) render(d, { cached: false, at: Date.now() });
     markFresh();
   }).catch(function (e) {
+    stOff();
     if (my !== S.seq) return;
     if (hit) toast('อัปเดตข้อมูลล่าสุดไม่สำเร็จ — กำลังแสดงข้อมูลที่เปิดไว้ก่อนหน้า · ' + e.message, 'warn', 8000);
     else if (opt.errTo && document.getElementById(opt.errTo)) document.getElementById(opt.errTo).innerHTML = note('bad', esc(e.message || e));
@@ -196,7 +276,7 @@ function fiscalOf(ym) { var p = String(ym).split('-'); return Number(p[0]) + 543
 var STATUS_CLASS = {
   'จ่ายแล้ว': 'ok', 'จ่ายบางส่วน': 'warn', 'ค้างจ่าย': 'warn', 'ระงับโดยผู้จัดการ': 'bad',
   'ไม่เบิก': '', 'หนี้เสีย': 'bad', 'หนี้ศูนย์': '', 'รอจัดกลุ่ม': 'bad',
-  'ระงับ · เข้ารายได้คลินิก': 'brand', 'ไม่พบเวร': 'bad'
+  'ระงับ · เข้ารายได้คลินิก': 'brand', 'ไม่พบเวร': 'bad', 'รอตั้งชื่อแพทย์': 'bad'   /* รุ่น 28.1 */
 };
 var ST_CLINIC = 'ระงับ · เข้ารายได้คลินิก', ST_NOSHIFT = 'ไม่พบเวร';   /* ต้องตรงกับ PAY_STATUS.CLINIC / NOSHIFT ใน Config.gs */
 /* ต้องตรงกับ PAY_STATUS ใน Config.gs ทุกตัวอักษร */
@@ -588,6 +668,7 @@ function menu() {
     m.push({ p: 'audit', ic: 'alert', t: 'รายงานที่ต้องตรวจสอบ' });
     m.push({ p: 'hn', ic: 'search', t: 'ค้นหาจาก HN' });
     m.push({ p: 'reassign', ic: 'swap', t: 'DF ลงชื่อผิดคน' });
+    if (isHr() || isAcct()) m.push({ p: 'locks', ic: 'lock', t: 'ล็อกชื่อแพทย์ DF', badge: n.lockWait || 0, bad: true });   /* รุ่น 28.1 */
     m.push({ g: 'การเงินติดตาม', id: 'fin' });
     m.push({ p: 'pending', ic: 'clock', t: 'ติดตามยอดค้างจ่าย' });
     m.push({ p: 'writeoff', ic: 'slash', t: 'หนี้เสีย / หนี้ศูนย์' });

@@ -79,7 +79,14 @@ ROUTES.audit = function (arg) {
              { k: 'clinic', label: 'คลินิก', cls: 'small' }, { k: 'dept', label: 'ฝ่าย', cls: 'small' },
              { k: 'code', label: 'รหัส', type: 'code' }, { k: 'pttype', label: 'สิทธิ', cls: 'small' },
              { k: 'total', label: 'ยอด', type: 'money0', sum: true },
-             { k: 'detail', label: 'รายละเอียด', cls: 'small wrap' },
+             { k: 'detail', label: 'รายละเอียด', cls: 'small wrap', render: function (r) {
+                 /* รุ่น 28.1 — ปุ่มแก้ทันทีของหัวข้อใหม่ */
+                 var x = esc(r.detail || '');
+                 if (r.kind === 'notdoctor' && r.suggestDct && (isHr() || isAcct()))
+                   x += '<div style="margin-top:6px"><button class="btn sm" onclick="event.stopPropagation();auditTransfer(\'' + esc(r.caseId) + '\',\'' + esc(r.suggestDct) + '\',\'' + esc(r.suggestName || '') + '\',\'' + esc(r.dctName || '') + '\')">' + I('swap', 'sm') + 'โอนให้ ' + esc(r.suggestName || r.suggestDct) + '</button></div>';
+                 if (r.kind === 'lockwait' && (isHr() || isAcct()))
+                   x += '<div style="margin-top:6px"><button class="btn sm" onclick="event.stopPropagation();go(\'locks\',\'' + esc(String(r.date).slice(0, 7)) + '\')">' + I('lock', 'sm') + 'ไปตั้งชื่อแพทย์</button></div>';
+                 return x; } },
              { k: 'statusTh', label: 'สถานะ', render: function (r) { return tag(r.statusTh, r.status === 'fixed' ? 'ok' : r.status === 'sent' ? 'info' : 'warn') +
                  (r.note ? '<span class="sub">' + esc(r.note) + '</span>' : '') + (r.by ? '<span class="sub">' + esc(r.by) + ' · ' + esc(r.at) + '</span>' : ''); } }] });
   }, { quiet: true, errTo: 'auOut' });

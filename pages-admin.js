@@ -645,7 +645,8 @@ var SET_GROUPS = [
     ['apiToken', 'โทเคน (ถ้าฝ่ายไอทีล็อก API)', 'password'], ['nightlyBackDays', 'ดึงทับย้อนหลังทุกคืน (วัน)', 'number'],
     ['visitApiUrl', 'ที่อยู่ API รายชื่อผู้รับบริการ (visit) — ใช้เทียบ "ผู้ป่วยที่มาแต่ไม่มี DF" · เว้นว่าง = ปิด', 'text'],
     ['visitExcludeClinics', 'คลินิกที่ไม่ต้องเทียบ "มาตรวจแต่ไม่มี DF" (คั่นด้วย , เช่น คลินิกเด็กดี, WBOT)', 'text'],
-    ['rangeMaxDays', 'รายงานตามช่วงวันที่ เลือกได้ไม่เกิน (วัน)', 'number'] ] },
+    ['rangeMaxDays', 'รายงานตามช่วงวันที่ เลือกได้ไม่เกิน (วัน)', 'number'],
+    ['apiPauseMs', 'พักระหว่างเรียก API แต่ละครั้ง (มิลลิวินาที) — เซิร์ฟเวอร์ตอบ 403 เมื่อเรียกถี่', 'number'] ] },
   { t: 'การเข้าใช้งานของแพทย์ผ่านระบบ HIS', i: 'user', keys: [['hisVerifyUrl', 'ที่อยู่ API ตรวจรหัสผู้ใช้ HIS (ต้องเป็น https)', 'text'],
     ['hisAutoCreate', 'สร้างบัญชีแพทย์ให้เองเมื่อ HIS ยืนยันตัวตนแล้ว', 'onoff'] ] },
   { t: 'การคิดค่าตอบแทน ⚠ กระทบเงิน', i: 'baht', keys: [['sharePct', 'สัดส่วนส่วนแพทย์ (0.8 = 80%)', 'text'], ['baseField', 'ฐานคิดค่าตอบแทน', 'text'],
@@ -679,6 +680,18 @@ ROUTES.settings = function () {
         return '<label class="fld"><span>' + esc(k[1]) + '</span>' + inp + '</label>';
       }).join(''), { icon: G.i });
     }).join('') + '</div>';
+    /* รุ่น 28.1 — ล้างข้อมูลเพื่อดึงใหม่ */
+    var yms = [ymAdd(thisYm(), 0), ymAdd(thisYm(), -1), ymAdd(thisYm(), -2), ymAdd(thisYm(), -3)];
+    html += card('ล้างข้อมูลเพื่อดึงใหม่', '<p class="small" style="margin-top:0">ใช้เมื่อข้อมูลที่ดึงอัตโนมัติไว้ก่อนหน้าไม่ถูกต้อง (เช่น ก่อนฝ่ายไอทีแก้ API) แล้วต้องการเริ่มเดือนนั้นใหม่ให้ได้ข้อมูลที่ถูกต้องที่สุด</p>' +
+      '<div class="grid g2" style="gap:12px"><div>' + note('bad', '<b>ล้าง:</b> รายการ DF ที่ดึงไว้ · รายชื่อผู้รับบริการ · ยอดรายวัน/รายแพทย์/รอบ · ผลคำนวณของระบบ · ค้างจ่ายที่ระบบสร้างและฝ่ายบัญชียังไม่บันทึก') + '</div>' +
+      '<div>' + note('ok', '<b>เก็บไว้:</b> คำสั่งเจ้าหน้าที่รายเคส · โอน/ระงับ DF · ล็อกชื่อแพทย์ · ทะเบียน · ตั้งค่า · ค้างจ่ายที่บัญชีบันทึกแล้ว · ตกเบิก · รอบที่ปิดแล้ว/ประวัติจ่ายจริง (ล้างไม่ได้)') + '</div></div>' +
+      '<div class="fld"><span>เลือกรอบเดือน</span><div class="lk-pick" id="pgMonths">' + yms.map(function (ym, i) {
+        return '<label class="lk-chk" style="flex:0 1 180px"><input type="checkbox" value="' + ym + '"' + (i === 0 ? ' checked' : '') + '><span><b>' + ymTh(ym) + '</b></span></label>'; }).join('') + '</div>' +
+        '<div class="frow" style="align-items:flex-end;margin-top:8px"><label class="fld" style="margin:0"><span>เพิ่มรอบเดือนอื่น</span><select id="pgMore">' + ymOptions('', 24) + '</select></label>' +
+        '<button type="button" class="btn" onclick="purgeAddMonth()">' + I('plus', 'sm') + 'เพิ่ม</button></div></div>' +
+      '<label class="lk-chk" style="max-width:none;margin-bottom:12px"><input type="checkbox" id="pgRefetch" checked><span><b>ดึงข้อมูลใหม่ทันทีหลังล้าง</b><small>ระบบตั้งคิวดึงทีละ 2 วัน ทำต่อเองทุก 1 นาทีจนครบ (ปิดหน้าเว็บได้)</small></span></label>' +
+      '<div class="btn-row"><button class="btn danger" onclick="purgeDlg()">' + I('refresh', 'sm') + 'ล้างและดึงใหม่…</button><button class="btn" onclick="syncStatusShow()">' + I('clock', 'sm') + 'ดูความคืบหน้าการดึงข้อมูล</button></div><div id="pgOut" style="margin-top:10px"></div>',
+      { icon: 'refresh', fold: 'stPurge', open: false });
     html += card('ตรวจความพร้อมของระบบ', '<div class="small muted">ตรวจตาราง ค่าตั้งค่า โฟลเดอร์ กุญแจเข้ารหัส ทริกเกอร์ และการเชื่อมต่อ API</div><div id="hcOut" style="margin-top:10px"></div>',
       { icon: 'check', acts: '<button class="btn sm" onclick="runHealth(this)">' + I('play', 'sm') + 'ตรวจเดี๋ยวนี้</button>' });
     V(html);
@@ -816,3 +829,37 @@ ROUTES.logs = function (kind) {
       }) });
   });
 };
+
+/* ═══ รุ่น 28.1 — ล้างข้อมูลเพื่อดึงใหม่ ═══ */
+function purgeDlg() {
+  var months = [].map.call(document.querySelectorAll('#pgMonths input:checked'), function (x) { return x.value; });
+  if (!months.length) return toast('ยังไม่ได้เลือกรอบเดือน', 'warn');
+  var refetch = document.getElementById('pgRefetch').checked;
+  UI.dialog({ title: 'ล้างข้อมูล ' + months.map(ymTh).join(', ') + '?', icon: 'alert', tone: 'bad', ok: 'ล้างข้อมูล', okCls: 'danger',
+    body: note('bad', 'ข้อมูลที่ดึงไว้ของรอบนี้จะถูกล้าง ' + (refetch ? 'แล้วระบบดึงใหม่จากระบบโรงพยาบาลเอง' : 'ต้องกดดึงข้อมูลใหม่เอง') + ' · ระหว่างดึง ตัวเลขรอบนี้จะยังไม่ครบ') +
+      '<label class="fld"><span>พิมพ์คำว่า <b>ล้างข้อมูล</b> เพื่อยืนยัน</span><input id="pgWord" autocomplete="off"></label>' +
+      '<label class="fld"><span>รหัสผ่านของท่าน</span><input id="pgPass" type="password" autocomplete="current-password"></label><div class="dlg-err"></div>',
+    onOk: function (el) {
+      if (mv('pgWord') !== 'ล้างข้อมูล') return dlgErr(el, 'กรุณาพิมพ์คำว่า "ล้างข้อมูล" ให้ตรง');
+      if (!document.getElementById('pgPass').value) return dlgErr(el, 'กรุณากรอกรหัสผ่าน');
+      return api('purgeMonth', { months: months, refetch: refetch, pass: document.getElementById('pgPass').value }, { write: true, btnText: 'กำลังล้าง' })
+        .then(function (r) {
+          toast(r.note, 'ok', 12000);
+          var o = document.getElementById('pgOut');
+          if (o) o.innerHTML = note('ok', esc(r.note) + '<br>' + (r.purged || []).map(function (x) {
+            return ymTh(x.ym) + ': ไฟล์ ' + N(x.files) + ' · วัน ' + N(x.days) + ' · รายแพทย์ ' + N(x.monthDoc) + ' · ผลคำนวณ ' + N(x.decisions) + ' · ค้างจ่าย ' + N(x.pending); }).join('<br>'));
+        }).catch(function (e) { return dlgErr(el, e.message); });
+    } });
+}
+function syncStatusShow() {
+  api('syncStatus', {}).then(function (r) {
+    var o = document.getElementById('pgOut');
+    var html = Object.keys(r || {}).map(function (k) { var v = r[k]; return '<b>' + esc(k) + '</b> ' + esc(Array.isArray(v) ? (v.join(' · ') || '—') : String(v)); }).join('<br>');
+    if (o) o.innerHTML = note('info', html || 'ไม่มีงานค้าง');
+  }).catch(function (e) { toast(e.message, 'bad'); });
+}
+function purgeAddMonth() {
+  var ym = document.getElementById('pgMore').value, host = document.getElementById('pgMonths');
+  if (host.querySelector('input[value="' + ym + '"]')) { host.querySelector('input[value="' + ym + '"]').checked = true; return; }
+  host.insertAdjacentHTML('beforeend', '<label class="lk-chk" style="flex:0 1 180px"><input type="checkbox" value="' + ym + '" checked><span><b>' + ymTh(ym) + '</b></span></label>');
+}
