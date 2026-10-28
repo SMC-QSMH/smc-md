@@ -643,7 +643,8 @@ function quickRule(json) {
 var SET_GROUPS = [
   { t: 'แหล่งข้อมูลจากระบบโรงพยาบาล', i: 'link', keys: [['apiBase', 'ที่อยู่ API', 'text'], ['apiReport', 'ชื่อรายงาน', 'text'],
     ['apiToken', 'โทเคน (ถ้าฝ่ายไอทีล็อก API)', 'password'], ['nightlyBackDays', 'ดึงทับย้อนหลังทุกคืน (วัน)', 'number'],
-    ['visitApiUrl', 'ที่อยู่ API รายชื่อผู้รับบริการ (visit) — ใช้เทียบ "ผู้ป่วยที่มาแต่ไม่มี DF" · เว้นว่าง = ปิด', 'text'],
+    ['visitApiUrl', 'ที่อยู่ API รายชื่อผู้รับบริการ (visit) — ใช้หาแพทย์เจ้าของ visit (จับคู่ VN) · เว้นว่าง = ปิด', 'text'],
+    ['auditVisitCompare', 'รายงานที่ต้องตรวจสอบ: แสดง "มาตรวจแต่ไม่มี DF" (ข้อมูลเยอะ หน้าช้า · แนะนำปิด)', 'onoff'],
     ['visitExcludeClinics', 'คลินิกที่ไม่ต้องเทียบ "มาตรวจแต่ไม่มี DF" (คั่นด้วย , เช่น คลินิกเด็กดี, WBOT)', 'text'],
     ['rangeMaxDays', 'รายงานตามช่วงวันที่ เลือกได้ไม่เกิน (วัน)', 'number'],
     ['apiPauseMs', 'พักระหว่างเรียก API แต่ละครั้ง (มิลลิวินาที) — เซิร์ฟเวอร์ตอบ 403 เมื่อเรียกถี่', 'number'] ] },
@@ -680,21 +681,22 @@ ROUTES.settings = function () {
         return '<label class="fld"><span>' + esc(k[1]) + '</span>' + inp + '</label>';
       }).join(''), { icon: G.i });
     }).join('') + '</div>';
-    /* รุ่น 28.1 — ล้างข้อมูลเพื่อดึงใหม่ */
+    /* รุ่น 28.2 — ทำความสะอาดข้อมูลเก่า (ปุ่มเดียว) + ล้างรายเดือน (ขั้นสูง) */
+    html += card('ทำความสะอาดข้อมูลเก่า', '<div id="cuOut"><div class="sk-msg"><span class="spin"></span>กำลังตรวจข้อมูลเก่าที่ค้าง…</div></div>',
+      { icon: 'refresh', fold: 'stClean', open: true });
     var yms = [ymAdd(thisYm(), 0), ymAdd(thisYm(), -1), ymAdd(thisYm(), -2), ymAdd(thisYm(), -3)];
-    html += card('ล้างข้อมูลเพื่อดึงใหม่', '<p class="small" style="margin-top:0">ใช้เมื่อข้อมูลที่ดึงอัตโนมัติไว้ก่อนหน้าไม่ถูกต้อง (เช่น ก่อนฝ่ายไอทีแก้ API) แล้วต้องการเริ่มเดือนนั้นใหม่ให้ได้ข้อมูลที่ถูกต้องที่สุด</p>' +
-      '<div class="grid g2" style="gap:12px"><div>' + note('bad', '<b>ล้าง:</b> รายการ DF ที่ดึงไว้ · รายชื่อผู้รับบริการ · ยอดรายวัน/รายแพทย์/รอบ · ผลคำนวณของระบบ · ค้างจ่ายที่ระบบสร้างและฝ่ายบัญชียังไม่บันทึก') + '</div>' +
-      '<div>' + note('ok', '<b>เก็บไว้:</b> คำสั่งเจ้าหน้าที่รายเคส · โอน/ระงับ DF · ล็อกชื่อแพทย์ · ทะเบียน · ตั้งค่า · ค้างจ่ายที่บัญชีบันทึกแล้ว · ตกเบิก · รอบที่ปิดแล้ว/ประวัติจ่ายจริง (ล้างไม่ได้)') + '</div></div>' +
+    html += card('ล้างข้อมูลรายเดือน (ขั้นสูง)', '<p class="small" style="margin-top:0">ใช้เมื่อต้องการล้างเดือนใดเดือนหนึ่งแล้วดึงใหม่ · <b>ยอดจ่ายจริง (ประวัติ/นำเข้า Excel) ระบบเก็บไว้เสมอ</b> · รอบที่ปิดในระบบต้องเปิดรอบก่อน</p>' +
       '<div class="fld"><span>เลือกรอบเดือน</span><div class="lk-pick" id="pgMonths">' + yms.map(function (ym, i) {
         return '<label class="lk-chk" style="flex:0 1 180px"><input type="checkbox" value="' + ym + '"' + (i === 0 ? ' checked' : '') + '><span><b>' + ymTh(ym) + '</b></span></label>'; }).join('') + '</div>' +
         '<div class="frow" style="align-items:flex-end;margin-top:8px"><label class="fld" style="margin:0"><span>เพิ่มรอบเดือนอื่น</span><select id="pgMore">' + ymOptions('', 24) + '</select></label>' +
         '<button type="button" class="btn" onclick="purgeAddMonth()">' + I('plus', 'sm') + 'เพิ่ม</button></div></div>' +
-      '<label class="lk-chk" style="max-width:none;margin-bottom:12px"><input type="checkbox" id="pgRefetch" checked><span><b>ดึงข้อมูลใหม่ทันทีหลังล้าง</b><small>ระบบตั้งคิวดึงทีละ 2 วัน ทำต่อเองทุก 1 นาทีจนครบ (ปิดหน้าเว็บได้)</small></span></label>' +
+      '<label class="lk-chk" style="max-width:none;margin-bottom:12px"><input type="checkbox" id="pgRefetch" checked><span><b>ดึงข้อมูลใหม่ทันทีหลังล้าง</b><small>เฉพาะเดือนที่ยังไม่มียอดจ่ายจริง · ระบบดึงทีละ 2 วัน ทำต่อเองทุก 1 นาทีจนครบ (ปิดหน้าเว็บได้)</small></span></label>' +
       '<div class="btn-row"><button class="btn danger" onclick="purgeDlg()">' + I('refresh', 'sm') + 'ล้างและดึงใหม่…</button><button class="btn" onclick="syncStatusShow()">' + I('clock', 'sm') + 'ดูความคืบหน้าการดึงข้อมูล</button></div><div id="pgOut" style="margin-top:10px"></div>',
-      { icon: 'refresh', fold: 'stPurge', open: false });
+      { icon: 'slash', fold: 'stPurge', open: false });
     html += card('ตรวจความพร้อมของระบบ', '<div class="small muted">ตรวจตาราง ค่าตั้งค่า โฟลเดอร์ กุญแจเข้ารหัส ทริกเกอร์ และการเชื่อมต่อ API</div><div id="hcOut" style="margin-top:10px"></div>',
       { icon: 'check', acts: '<button class="btn sm" onclick="runHealth(this)">' + I('play', 'sm') + 'ตรวจเดี๋ยวนี้</button>' });
     V(html);
+    cleanupLoad();
   });
 };
 function saveSettings() {
@@ -846,14 +848,13 @@ function purgeDlg() {
         .then(function (r) {
           toast(r.note, 'ok', 12000);
           var o = document.getElementById('pgOut');
-          if (o) o.innerHTML = note('ok', esc(r.note) + '<br>' + (r.purged || []).map(function (x) {
-            return ymTh(x.ym) + ': ไฟล์ ' + N(x.files) + ' · วัน ' + N(x.days) + ' · รายแพทย์ ' + N(x.monthDoc) + ' · ผลคำนวณ ' + N(x.decisions) + ' · ค้างจ่าย ' + N(x.pending); }).join('<br>'));
+          if (o) o.innerHTML = note('ok', esc(r.note) + '<br>' + (r.lines || []).map(esc).join('<br>'));
         }).catch(function (e) { return dlgErr(el, e.message); });
     } });
 }
-function syncStatusShow() {
+function syncStatusShow(target) {
   api('syncStatus', {}).then(function (r) {
-    var o = document.getElementById('pgOut');
+    var o = document.getElementById(target || 'pgOut');
     var html = Object.keys(r || {}).map(function (k) { var v = r[k]; return '<b>' + esc(k) + '</b> ' + esc(Array.isArray(v) ? (v.join(' · ') || '—') : String(v)); }).join('<br>');
     if (o) o.innerHTML = note('info', html || 'ไม่มีงานค้าง');
   }).catch(function (e) { toast(e.message, 'bad'); });
@@ -862,4 +863,52 @@ function purgeAddMonth() {
   var ym = document.getElementById('pgMore').value, host = document.getElementById('pgMonths');
   if (host.querySelector('input[value="' + ym + '"]')) { host.querySelector('input[value="' + ym + '"]').checked = true; return; }
   host.insertAdjacentHTML('beforeend', '<label class="lk-chk" style="flex:0 1 180px"><input type="checkbox" value="' + ym + '" checked><span><b>' + ymTh(ym) + '</b></span></label>');
+}
+
+/* ═══ รุ่น 28.2 — ทำความสะอาดข้อมูลเก่า ═══ */
+function cleanupLoad() {
+  var o = document.getElementById('cuOut'); if (!o) return;
+  api('cleanupPreview', {}, { noBtn: true }).then(function (P) { S.cleanup = P; cleanupDraw(P); })
+    .catch(function (e) { o.innerHTML = note('bad', esc(e.message)); });
+}
+function cleanupDraw(P, log) {
+  var o = document.getElementById('cuOut'); if (!o) return;
+  var items = [];
+  if (P.staleMonths.length) items.push(['cuStale', true, 'ล้างรอบเก่าที่ค้างเปิด ' + P.staleMonths.length + ' รอบ',
+    P.staleMonths.map(function (m) { return ymTh(m.ym) + ' ' + m.open.join(', ') + (m.kept.length ? ' (ยอดจ่ายจริง ' + m.kept.join(', ') + ' เก็บไว้)' : '') + (m.sysClosed.length ? ' — ข้าม: ปิดรอบในระบบแล้ว' : ''); }).join(' · ') +
+    '<br>เป็นรอบที่ระบบดึงจาก API ย้อนหลังไว้ ไม่ใช่ยอดที่จ่ายจริง']);
+  if (P.staleBackpay.n) items.push(['cuBp', true, 'ลบตกเบิก/เรียกคืนที่ระบบตรวจผิด ' + N(P.staleBackpay.n) + ' รายการ',
+    'เกิดจากระบบเอายอด API ไปเทียบกับรอบประวัติจ่ายจริง (' + P.staleBackpay.months.map(ymTh).join(', ') + ') ซึ่งเทียบรายรายการไม่ได้ · ไม่แตะรายการที่นำเข้ารอบจ่ายแล้ว']);
+  if (P.seedMissing.length || P.paidBackpayMissing) items.push(['cuSeed', true, 'นำเข้าประวัติจ่ายจริงที่ยังขาด',
+    (P.seedMissing.length ? 'รอบ ' + P.seedMissing.map(ymTh).join(', ') : '') + (P.paidBackpayMissing ? (P.seedMissing.length ? ' · ' : '') + 'ตกเบิกที่จ่ายแล้ว ' + N(P.paidBackpayMissing) + ' รายการ' : '') +
+    '<br>จากไฟล์ "รวมการจ่ายแพทย์จริง รอบจ่าย 10.68-09.69" ที่ฝังในระบบแล้ว ไม่ต้องอัปโหลดเข้า Drive']);
+  var cur = P.current;
+  items.push(['cuCur', false, 'ล้าง ' + ymTh(cur.ym) + ' แล้วดึงใหม่ทั้งเดือน',
+    (cur.sysClosed.length ? 'ข้าม: ปิดรอบในระบบแล้ว' : 'ใช้เมื่อข้อมูลเดือนนี้ดึงไว้ก่อนไอทีแก้ API · มีข้อมูลอยู่ ' + N(cur.days) + ' วัน · ระบบดึงใหม่เองราว 15–25 นาที')]);
+  var clean = items.length === 1;
+  var html = (log ? note('ok', '<b>ทำเสร็จแล้ว</b><br>' + log.map(esc).join('<br>')) : '') +
+    (clean ? note('ok', 'ไม่มีข้อมูลเก่าค้าง · ประวัติจ่ายจริงครบ') : note('warn', 'พบข้อมูลเก่าที่ทำให้ระบบดูรก — เลือกแล้วกดปุ่มเดียว ระบบทำให้ตามลำดับ')) +
+    items.map(function (it) {
+      return '<label class="lk-chk" style="max-width:none;margin-bottom:8px"><input type="checkbox" id="' + it[0] + '"' + (it[1] ? ' checked' : '') + '><span><b>' + esc(it[2]) + '</b><small>' + it[3] + '</small></span></label>';
+    }).join('') +
+    '<div class="btn-row" style="margin-top:6px"><button class="btn pri" onclick="cleanupDlg()">' + I('check', 'sm') + 'ทำความสะอาด…</button>' +
+    '<button class="btn" onclick="syncStatusShow(\'cuOut2\')">' + I('clock', 'sm') + 'ดูความคืบหน้าการดึงข้อมูล</button></div><div id="cuOut2" style="margin-top:10px"></div>' +
+    '<p class="small muted" style="margin-bottom:0">ไม่แตะ: ยอดจ่ายจริงทุกรอบ · คำสั่งเจ้าหน้าที่ · โอน/ระงับ · ล็อกชื่อแพทย์ · ทะเบียน · ตั้งค่า · ค้างจ่ายที่บัญชีบันทึก</p>';
+  o.innerHTML = html;
+}
+function cleanupDlg() {
+  var ck = function (id) { var e = document.getElementById(id); return !!(e && e.checked); };
+  var p = { stale: ck('cuStale'), backpay: ck('cuBp'), seed: ck('cuSeed'), current: ck('cuCur') };
+  if (!p.stale && !p.backpay && !p.seed && !p.current) return toast('ยังไม่ได้เลือกรายการ', 'warn');
+  UI.dialog({ title: 'ทำความสะอาดข้อมูลเก่า?', icon: 'alert', ok: 'ทำความสะอาด',
+    body: note('info', 'ใช้เวลาไม่เกิน 1–2 นาที' + (p.current ? ' · จากนั้นระบบดึงข้อมูลเดือนนี้ใหม่เองต่อในเบื้องหลัง' : '')) +
+      '<label class="fld"><span>รหัสผ่านของท่าน</span><input id="cuPass" type="password" autocomplete="current-password"></label><div class="dlg-err"></div>',
+    onOk: function (el) {
+      var pass = document.getElementById('cuPass').value;
+      if (!pass) return dlgErr(el, 'กรุณากรอกรหัสผ่าน');
+      p.pass = pass;
+      return api('cleanupRun', p, { write: true, btnText: 'กำลังทำความสะอาด', longAfter: 4000 })
+        .then(function (r) { toast('ทำความสะอาดเสร็จแล้ว', 'ok', 8000); S.cleanup = r.after; cleanupDraw(r.after, r.log); })
+        .catch(function (e) { return dlgErr(el, e.message); });
+    } });
 }
