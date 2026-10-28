@@ -16,7 +16,7 @@ var CFG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbzOwaFEOa0qwV3lTbGUgKyKgYxz6lIhLmdN_yke6zgICud75TRpbBy6cMBkQkXUqhnj1A/exec',
 
   /* ต้องตรงกับ APP.BUILD ใน Config.gs — ถ้าไม่ตรงระบบจะเตือนให้ล้างแคช */
-  BUILD: '2569-10-28.1',
+  BUILD: '2569-10-28.2',
 
   /* รีเฟรชหน้าที่ดูข้อมูลสดอัตโนมัติ (วินาที) · 0 = ปิด */
   AUTO_REFRESH: 0,
